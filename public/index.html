@@ -44,7 +44,7 @@
       <label id="confirm-row">
         Repeat password
         <span class="pwd-field">
-          <input id="confirm" type="password" minlength="10" maxlength="1024" autocomplete="new-password" required>
+          <input id="confirm" type="password" minlength="10" maxlength="1024" autocomplete="new-password" aria-describedby="confirm-error" required>
           <button id="confirm-reveal" class="reveal" type="button" aria-label="Reveal password" aria-pressed="false">
             <svg class="eye eye-closed" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 3l18 18"></path>
@@ -58,6 +58,7 @@
             </svg>
           </button>
         </span>
+        <small id="confirm-error" class="field-error" role="alert" hidden>Passwords do not match.</small>
       </label>
 
       <section id="pwd-audit" class="pwd-audit" data-score="0" aria-live="polite">
