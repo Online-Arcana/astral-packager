@@ -36,20 +36,24 @@ The version-2 header is always 103 bytes. The complete header is AES-GCM additio
 | 2 | raw DEFLATE stream without zlib or gzip framing |
 | 3 | Zstandard frame |
 
-Packaging always includes raw protobuf as a candidate, so compression can never enlarge the payload. The smallest supported lossless candidate is stored.
+The codec ID determines the exact unpacking rule. The compression settings used while creating the file are not needed for decompression.
 
-The Node CLI compares:
+### Packaging policy
 
-- Brotli quality 11 in generic mode
-- Brotli quality 11 in text mode
-- raw DEFLATE level 9 with the default strategy
-- raw DEFLATE level 9 with the filtered strategy
-- Zstandard level 22 with the `btultra2` strategy
-- uncompressed protobuf
+Packaging uses one balanced compression pass instead of comparing several maximum-level encoders:
 
-The browser uses the same selection rule with the lossless Brotli, raw-DEFLATE and Zstandard encoders exposed by its Compression Streams implementation. A runtime that lacks one codec excludes that candidate. The codec ID in the header determines the exact unpacking rule.
+- payloads smaller than 1,024 bytes remain raw protobuf;
+- Node uses Zstandard level 3 when available and otherwise Brotli quality 4;
+- browsers prefer Zstandard, then raw DEFLATE, then Brotli according to local support;
+- browser compression has a 20-second limit;
+- an unavailable, failed or timed-out automatic compression pass falls back to raw protobuf;
+- raw protobuf is retained whenever compressed output is not smaller.
 
-Compression is performed before encryption. AES-GCM ciphertext is intentionally random-looking and must never be passed through another compression stage.
+A caller using the internal forced-codec test interface may request one specific codec. Production packaging does not run competing codecs.
+
+Compression happens before encryption. AES-GCM ciphertext is intentionally random-looking and must never be compressed afterward.
+
+Changing codec or compression settings cannot change the user identity. Identity derivation uses the recovered canonical semantic JSON and private entropy rather than compressed or protobuf bytes.
 
 ## Typed protobuf payload
 
@@ -100,12 +104,10 @@ strict JSON
   → semantic value
   → canonical JSON used for identity derivation
   → typed protobuf with private entropy
-  → smallest supported lossless encoding
+  → balanced lossless compression or raw protobuf
   → AES-256-GCM ciphertext
   → authenticated public header + ciphertext
 ```
-
-The compression result does not generate the identity. The identity root is derived from the recovered canonical JSON and private entropy, so changing codec, compression mode or compression library cannot change the user's public key or child keys.
 
 ## Unpacking order
 
@@ -113,9 +115,9 @@ The compression result does not generate the identity. The identity root is deri
 2. Read the public key and password-lock metadata.
 3. Derive the AES key from the supplied password.
 4. Authenticate the full header and decrypt the ciphertext.
-5. Decompress according to header byte 12.
+5. Decompress according to header byte 12, or copy bytes directly for codec `0`.
 6. Require the exact uncompressed length from header offset 20.
-7. Decode payload format 2 with the schema above.
+7. Decode payload format `2` with the schema above.
 8. Rebuild canonical JSON from the semantic value.
 9. Derive the identity root from canonical JSON plus encrypted entropy.
 10. Regenerate the Ed25519 public key and require an exact match with the readable header.
@@ -130,6 +132,8 @@ Version 1 begins with `ASTRPKG1`. Its ciphertext decrypts directly to a small pr
 
 - maximum ciphertext: 64 MiB
 - maximum uncompressed protobuf: 64 MiB
+- automatic compression threshold: 1 KiB
+- browser compression budget: 20 seconds
 - entropy: exactly 32 bytes
 - public key: exactly 43 base64url characters
 - salt: 16 bytes
