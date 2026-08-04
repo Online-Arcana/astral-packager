@@ -3,9 +3,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cat, get32, text, utf8 } from "../src/bytes.ts";
-import { packWith, open, readMeta, readPub } from "../src/core.ts";
+import { packWith, open, readMeta, readPub, readPubRaw } from "../src/core.ts";
 import { edPub, lockKey, rootFor, signSeed } from "../src/crypto.ts";
-import { makeHead, makeHead2, tagSize } from "../src/fmt.ts";
+import { makeHead, makeHead2, makeHead3, tagSize } from "../src/fmt.ts";
 import { clean, parse, canon } from "../src/json.ts";
 import { encodePb } from "../src/pb.ts";
 import { encodePb2 } from "../src/pb2.ts";
@@ -54,29 +54,46 @@ const encrypt = async (head, payload) => {
   return cat(head, cipher);
 };
 
-const oldPack = async (source) => {
+const identity = async (source) => {
   const value = parse(source);
   const json = utf8(canon(value));
   const { root, doc } = await rootFor(json, opt.ent);
   const seed = await signSeed(root, doc);
   const pub = await edPub(seed);
+  return { value, json, pub };
+};
+
+const oldPack = async (source) => {
+  const { json, pub } = await identity(source);
   const payload = encodePb(json, opt.ent);
   const head = makeHead(opt.iterations, opt.salt, opt.nonce, pub.text, payload.byteLength + tagSize);
   return encrypt(head, payload);
 };
 
 const oldPack2 = async (source) => {
-  const value = parse(source);
-  const json = utf8(canon(value));
-  const { root, doc } = await rootFor(json, opt.ent);
-  const seed = await signSeed(root, doc);
-  const pub = await edPub(seed);
+  const { value, pub } = await identity(source);
   const payload = encodePb2(value, opt.ent);
   const head = makeHead2(
     opt.iterations,
     opt.salt,
     opt.nonce,
     pub.text,
+    payload.byteLength + tagSize,
+    0,
+    payload.byteLength,
+  );
+  return encrypt(head, payload);
+};
+
+const oldPack3 = async (source) => {
+  const { value, pub } = await identity(source);
+  const payload = encodePb2(value, opt.ent);
+  const head = makeHead3(
+    opt.iterations,
+    opt.salt,
+    opt.nonce,
+    pub.text,
+    expectedSigns,
     payload.byteLength + tagSize,
     0,
     payload.byteLength,
@@ -113,17 +130,20 @@ test("typed protobuf preserves every JSON value kind", async () => {
   }
 });
 
-test("version 3 exposes public signs without removing them from the payload", async () => {
+test("version 4 stores the exact raw public key and public signs", async () => {
   const packed = await packWith(JSON.stringify(chart), password, opt);
-  assert.equal(text(packed.bytes.slice(0, 8)), "ASTRPKG3");
+  assert.equal(text(packed.bytes.slice(0, 8)), "ASTRPKG4");
   const meta = readMeta(packed.bytes);
-  assert.equal(meta.ver, 3);
+  assert.equal(meta.ver, 4);
   assert.equal(meta.pub, packed.pub);
+  assert.deepEqual(meta.pubRaw, packed.pubRaw);
+  assert.deepEqual(readPubRaw(packed.bytes), packed.pubRaw);
+  assert.deepEqual(packed.bytes.slice(60, 92), packed.pubRaw);
   assert.deepEqual(meta.signs, expectedSigns);
   assert.deepEqual(packed.signs, expectedSigns);
 
   const headSize = get32(packed.bytes, 28);
-  assert.equal(text(packed.bytes.slice(103, headSize)), [
+  assert.equal(text(packed.bytes.slice(92, headSize)), [
     "",
     "solar_sign=capricorn",
     "lunar_sign=virgo",
@@ -135,6 +155,7 @@ test("version 3 exposes public signs without removing them from the payload", as
   ].join("\n"));
 
   const value = await open(packed.bytes, password);
+  assert.deepEqual(value.pubRaw, packed.pubRaw);
   assert.deepEqual(value.signs, expectedSigns);
   assert.equal(value.json["astral-calculation"].system.points.sun.position.value.sign, "capricorn");
   assert.equal(value.json["astral-calculation"].system.points.imum_coeli.position.value.sign, "aries");
@@ -159,9 +180,11 @@ test("generic JSON keeps blank public sign fields", async () => {
 test("pack and open use one deterministic identity", async () => {
   const packed = await packWith('{"b":2,"a":1}', password, opt);
   assert.equal(readPub(packed.bytes), packed.pub);
+  assert.deepEqual(readPubRaw(packed.bytes), packed.pubRaw);
   const value = await open(packed.bytes, password);
   assert.equal(value.source, '{"a":1,"b":2}');
   assert.equal(value.pub, packed.pub);
+  assert.deepEqual(value.pubRaw, packed.pubRaw);
   const sig = await value.id.sign(utf8("message"));
   assert.equal(sig.byteLength, 64);
   const readingA = await value.id.key("reading", utf8("a"));
@@ -215,6 +238,8 @@ test("compression does not participate in identity derivation", async () => {
   });
   assert.equal(raw.pub, br.pub);
   assert.equal(raw.pub, zstd.pub);
+  assert.deepEqual(raw.pubRaw, br.pubRaw);
+  assert.deepEqual(raw.pubRaw, zstd.pubRaw);
   assert.equal(raw.info.codec, 0);
   assert.equal(br.info.codec, 1);
   assert.equal(zstd.info.codec, 3);
@@ -227,7 +252,7 @@ test("compression does not participate in identity derivation", async () => {
   restored.id.drop();
 });
 
-test("version 1 and version 2 containers remain readable", async () => {
+test("version 1, version 2 and version 3 containers remain readable", async () => {
   const v1 = await oldPack('{"old":true,"n":7}');
   const value1 = await open(v1, password);
   assert.equal(value1.source, '{"n":7,"old":true}');
@@ -248,6 +273,13 @@ test("version 1 and version 2 containers remain readable", async () => {
   });
   assert.deepEqual(value2.signs, expectedSigns);
   value2.id.drop();
+
+  const v3 = await oldPack3(JSON.stringify(chart));
+  const value3 = await open(v3, password);
+  assert.equal(readMeta(v3).ver, 3);
+  assert.deepEqual(readMeta(v3).signs, expectedSigns);
+  assert.deepEqual(value3.signs, expectedSigns);
+  value3.id.drop();
 });
 
 test("wrong passwords and altered bytes fail", async () => {
@@ -260,7 +292,7 @@ test("wrong passwords and altered bytes fail", async () => {
   head[60] ^= 1;
   await assert.rejects(() => open(head, password));
   const signs = packed.bytes.slice();
-  signs[109] ^= 1;
+  signs[100] ^= 1;
   await assert.rejects(() => open(signs, password));
 });
 
@@ -271,4 +303,5 @@ test("fresh entropy creates a different public identity", async () => {
     ent: Uint8Array.from({ length: 32 }, (_, i) => 255 - i),
   });
   assert.notEqual(left.pub, right.pub);
+  assert.notDeepEqual(left.pubRaw, right.pubRaw);
 });
