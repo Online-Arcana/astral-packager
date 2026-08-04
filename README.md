@@ -50,18 +50,18 @@ strict JSON
   → readable authenticated header + ciphertext
 ```
 
-The readable header contains the Ed25519 public key and these six signs when present in an Astrology chart:
+The readable header contains the Ed25519 public key followed by these six lines when present in an Astrology chart:
 
 ```text
-solar=capricorn
-lunar=virgo
-ascending=capricorn
-midheaven=libra
-descending=cancer
-imum_coeli=aries
+solar_sign=capricorn
+lunar_sign=virgo
+ascending_sign=capricorn
+midheaven_sign=libra
+descending_sign=cancer
+imum_coeli_sign=aries
 ```
 
-The signs are copied from `astral-calculation.system.points` and remain inside the encrypted payload as well. Generic JSON remains supported and receives blank public sign values. The complete header is authenticated, and decryption re-extracts the six values from the payload and requires an exact match.
+A newline separates the public key from the first field, so a raw text scan remains readable. The signs are copied from `astral-calculation.system.points` and remain inside the encrypted payload as well. Generic JSON remains supported and receives blank public sign values. The complete header is authenticated, and decryption re-extracts the six values from the payload and requires an exact match.
 
 Packaging performs one moderate compression pass rather than running several maximum-level encoders. Payloads under 1 KiB stay as raw protobuf. Node prefers Zstandard level 3 and falls back to Brotli quality 4. Browsers prefer Zstandard, then raw DEFLATE, then Brotli. Raw protobuf is retained whenever compression does not reduce the payload.
 
