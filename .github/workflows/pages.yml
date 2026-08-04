@@ -5,12 +5,7 @@ on:
     branches:
       - main
     paths:
-      - ".github/workflows/pages.yml"
-      - "src/**"
-      - "public/**"
-      - "scripts/**"
-      - "package.json"
-      - "package-lock.json"
+      - ".deploy"
   workflow_dispatch:
 
 permissions:
