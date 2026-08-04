@@ -4,6 +4,7 @@ const modules = [
   "../src/pb.ts",
   "../src/crypto.ts",
   "../src/fmt.ts",
+  "../src/pwd.ts",
   "../src/id.ts",
   "../src/core.ts",
   "../src/index.ts",
