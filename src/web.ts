@@ -1,6 +1,6 @@
 // @ts-check
 
-import { pack, pwdOk } from "./core.ts";
+import { auditPwd, pack } from "./core.ts";
 
 const one = (selector) => {
   const value = document.querySelector(selector);
@@ -17,6 +17,11 @@ const status = one("#status");
 const result = one("#result");
 const publicKey = one("#public-key");
 const download = one("#download");
+const auditBox = one("#pwd-audit");
+const meter = one("#pwd-meter");
+const score = one("#pwd-score");
+const note = one("#pwd-note");
+const tips = one("#pwd-tips");
 let url = null;
 
 const outputName = (name) => {
@@ -26,12 +31,32 @@ const outputName = (name) => {
   return `${name}.astral`;
 };
 
+const showAudit = () => {
+  const audit = auditPwd(password.value);
+  auditBox.dataset.score = String(audit.score);
+  meter.value = audit.score;
+  score.textContent = password.value.length === 0
+    ? "Not scored"
+    : `${audit.score}/4 — ${audit.label}`;
+  note.textContent = audit.warning;
+  tips.replaceChildren(...audit.suggestions.map((tip) => {
+    const item = document.createElement("li");
+    item.textContent = tip;
+    return item;
+  }));
+  return audit;
+};
+
+password.addEventListener("input", showAudit);
+showAudit();
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   result.hidden = true;
   const selected = file.files?.[0];
   if (!selected) return status.textContent = "Choose a JSON-style file.";
-  if (!pwdOk(password.value)) return status.textContent = "Use at least 16 password characters.";
+  const audit = showAudit();
+  if (!audit.ok) return status.textContent = "Choose a password scored Strong or Excellent.";
   if (password.value !== confirm.value) return status.textContent = "Passwords do not match.";
   button.disabled = true;
   status.textContent = "Encrypting locally…";
@@ -47,6 +72,7 @@ form.addEventListener("submit", async (event) => {
     status.textContent = "Container ready. Nothing was uploaded.";
     password.value = "";
     confirm.value = "";
+    showAudit();
   } catch (cause) {
     status.textContent = cause instanceof Error ? cause.message : "Packaging failed.";
   } finally {
