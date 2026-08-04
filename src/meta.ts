@@ -18,12 +18,12 @@ const zodiac = new Set([
 ]);
 
 const fields = [
-  ["solar", "sun"],
-  ["lunar", "moon"],
-  ["ascending", "ascendant"],
-  ["midheaven", "midheaven"],
-  ["descending", "descendant"],
-  ["imum_coeli", "imum_coeli"],
+  ["solar_sign", "solar", "sun"],
+  ["lunar_sign", "lunar", "moon"],
+  ["ascending_sign", "ascending", "ascendant"],
+  ["midheaven_sign", "midheaven", "midheaven"],
+  ["descending_sign", "descending", "descendant"],
+  ["imum_coeli_sign", "imumCoeli", "imum_coeli"],
 ];
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -39,9 +39,9 @@ const at = (value, path) => {
 
 const sign = (value, name) => {
   if (value === undefined || value === null || value === "") return "";
-  if (typeof value !== "string") throw new Error(`Invalid public ${name} sign`);
+  if (typeof value !== "string") throw new Error(`Invalid public ${name}`);
   const clean = value.toLowerCase();
-  if (!zodiac.has(clean)) throw new Error(`Invalid public ${name} sign`);
+  if (!zodiac.has(clean)) throw new Error(`Invalid public ${name}`);
   return clean;
 };
 
@@ -57,35 +57,31 @@ export const emptySigns = () => ({
 export const signsFor = (value) => {
   const points = at(value, ["astral-calculation", "system", "points"]);
   const out = emptySigns();
-  for (const [name, point] of fields) {
-    const key = name === "imum_coeli" ? "imumCoeli" : name;
-    out[key] = sign(at(points, [point, "position", "value", "sign"]), name);
+  for (const [label, key, point] of fields) {
+    out[key] = sign(at(points, [point, "position", "value", "sign"]), label);
   }
   return out;
 };
 
 export const encodeSigns = (value) => utf8([
-  `solar=${value.solar}`,
-  `lunar=${value.lunar}`,
-  `ascending=${value.ascending}`,
-  `midheaven=${value.midheaven}`,
-  `descending=${value.descending}`,
-  `imum_coeli=${value.imumCoeli}`,
+  "",
+  ...fields.map(([label, key]) => `${label}=${value[key]}`),
   "",
 ].join("\n"));
 
 export const decodeSigns = (value) => {
   const source = text(value);
-  if (!source.endsWith("\n")) throw new Error("Invalid public sign block");
-  const lines = source.slice(0, -1).split("\n");
+  if (!source.startsWith("\n") || !source.endsWith("\n")) {
+    throw new Error("Invalid public sign block");
+  }
+  const lines = source.slice(1, -1).split("\n");
   if (lines.length !== fields.length) throw new Error("Invalid public sign block");
   const out = emptySigns();
   for (let index = 0; index < fields.length; index += 1) {
-    const [name] = fields[index];
-    const prefix = `${name}=`;
+    const [label, key] = fields[index];
+    const prefix = `${label}=`;
     if (!lines[index].startsWith(prefix)) throw new Error("Invalid public sign block");
-    const key = name === "imum_coeli" ? "imumCoeli" : name;
-    out[key] = sign(lines[index].slice(prefix.length), name);
+    out[key] = sign(lines[index].slice(prefix.length), label);
   }
   return out;
 };
