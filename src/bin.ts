@@ -89,7 +89,7 @@ const absent = async (file) => {
   }
 };
 
-const codec = ["raw", "Brotli", "DEFLATE"];
+const codec = ["raw", "Brotli", "DEFLATE", "Zstandard"];
 
 const run = async () => {
   const args = process.argv.slice(2);
