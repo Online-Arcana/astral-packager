@@ -45,15 +45,16 @@ Version 3 begins with this fixed section:
 
 The header length must be at least 103 and no more than 359 bytes. The ciphertext starts exactly at the recorded header length, and the complete file length must equal `header length + ciphertext length`.
 
-The public sign block is every byte from offset 103 to the header length. It must contain exactly these six lines in this order and a final newline:
+The public block is every byte from offset 103 to the header length. It begins with a newline that terminates the public-key text, then contains exactly these six labelled lines and a final newline:
 
 ```text
-solar=<value>
-lunar=<value>
-ascending=<value>
-midheaven=<value>
-descending=<value>
-imum_coeli=<value>
+
+solar_sign=<value>
+lunar_sign=<value>
+ascending_sign=<value>
+midheaven_sign=<value>
+descending_sign=<value>
+imum_coeli_sign=<value>
 ```
 
 Each value is either blank or one lowercase member of:
@@ -163,7 +164,7 @@ astral-calculation.system.points.descendant.position.value.sign
 astral-calculation.system.points.imum_coeli.position.value.sign
 ```
 
-Map them respectively to `solar`, `lunar`, `ascending`, `midheaven`, `descending` and `imum_coeli`.
+Map them respectively to `solar_sign`, `lunar_sign`, `ascending_sign`, `midheaven_sign`, `descending_sign` and `imum_coeli_sign`.
 
 - A missing or null path becomes a blank public value.
 - A present value must be a string containing one zodiac name.
