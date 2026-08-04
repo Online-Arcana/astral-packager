@@ -41,12 +41,11 @@ export { auditPwd, pwdOk };
 
 export const packWith = async (source, password, opt = {}) => {
   needPwd(password);
-  mark(opt, 0, "Preparing");
+  mark(opt, 0, "Reading and validating profile");
   const value = parse(source);
-  mark(opt, 4, "JSON parsed");
+  mark(opt, 0, "Canonicalising profile");
   const clean = canon(value);
   const json = utf8(clean);
-  mark(opt, 9, "Profile canonicalised");
   const ent = opt.ent ? opt.ent.slice() : rand(32);
   const salt = opt.salt ? opt.salt.slice() : rand(16);
   const nonce = opt.nonce ? opt.nonce.slice() : rand(12);
@@ -59,22 +58,27 @@ export const packWith = async (source, password, opt = {}) => {
   let rawKey;
 
   try {
-    mark(opt, 12, "Generating identity");
+    mark(opt, 0, "Generating identity");
     const identity = await rootFor(json, ent);
     root = identity.root;
     doc = identity.doc;
-    mark(opt, 18, "Identity root generated");
     seed = await signSeed(root, doc);
     const pub = await edPub(seed);
-    mark(opt, 26, "Public key generated");
+    mark(opt, 0, "Encoding protobuf");
     raw = encodePb2(value, ent);
-    mark(opt, 32, "Protobuf encoded");
-    const small = await shrink(raw, opt.codec ?? null, ({ done, total, name }) => {
-      const pct = 32 + ((done / total) * 40);
-      mark(opt, pct, `Testing ${name}`);
+    mark(opt, 1, "Protobuf ready");
+    const small = await shrink(raw, opt.codec ?? null, ({ done, total, name, active }) => {
+      const count = Math.max(1, total);
+      const pct = 1 + ((done / count) * 96);
+      const stage = active
+        ? `Compressing with ${name}`
+        : done >= total
+          ? "Compression complete"
+          : `Compressed with ${name}`;
+      mark(opt, pct, stage);
     });
     smallData = small.data;
-    mark(opt, 74, "Smallest payload selected");
+    mark(opt, 97, "Smallest payload selected");
     const cipherSize = smallData.byteLength + tagSize;
     const head = makeHead2(
       iterations,
@@ -85,9 +89,9 @@ export const packWith = async (source, password, opt = {}) => {
       small.id,
       raw.byteLength,
     );
-    mark(opt, 78, "Deriving encryption key");
+    mark(opt, 97, "Deriving encryption key");
     rawKey = await lockKey(password, salt, iterations);
-    mark(opt, 91, "Encryption key derived");
+    mark(opt, 99, "Encrypting payload");
     const key = await aes(rawKey, "encrypt");
     const cipher = new Uint8Array(await crypto.subtle.encrypt({
       name: "AES-GCM",
@@ -95,7 +99,6 @@ export const packWith = async (source, password, opt = {}) => {
       additionalData: head,
       tagLength: 128,
     }, key, smallData));
-    mark(opt, 98, "Payload encrypted");
     const bytes = cat(head, cipher);
     mark(opt, 100, "Container complete");
     return {
