@@ -33,7 +33,7 @@ interface PackInfo {
   json: number;
   pb: number;
   packed: number;
-  codec: 0 | 1 | 2; // raw, Brotli, raw DEFLATE
+  codec: 0 | 1 | 2 | 3; // raw, Brotli, raw DEFLATE, Zstandard
 }
 ```
 
