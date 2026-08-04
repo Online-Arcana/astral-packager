@@ -25,6 +25,7 @@ const auditBox = one("#pwd-audit");
 const meter = one("#pwd-meter");
 const score = one("#pwd-score");
 const tips = one("#pwd-tips");
+const codec = ["raw", "Brotli", "DEFLATE"];
 let url = null;
 
 const outputName = (name) => {
@@ -122,7 +123,7 @@ form.addEventListener("submit", async (event) => {
   if (!audit.ok) return status.textContent = "Choose a password scored Strong or Excellent.";
   if (!checkMatch()) return status.textContent = "Passwords do not match.";
   button.disabled = true;
-  status.textContent = "Encrypting locally…";
+  status.textContent = "Encoding, compressing and encrypting locally…";
   try {
     const source = await selected.text();
     const value = await pack(source, password.value);
@@ -132,7 +133,7 @@ form.addEventListener("submit", async (event) => {
     download.download = outputName(selected.name);
     publicKey.value = value.pub;
     result.hidden = false;
-    status.textContent = "Container ready. Nothing was uploaded.";
+    status.textContent = `Ready: ${value.info.json} B JSON → ${value.info.pb} B protobuf → ${value.info.packed} B ${codec[value.info.codec]}. Nothing was uploaded.`;
     password.value = "";
     confirm.value = "";
     setReveal(passwordReveal, password, false);
