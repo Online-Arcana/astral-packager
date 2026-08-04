@@ -85,15 +85,15 @@ const nodeCandidates = async (data, step) => {
   }
 
   let done = 0;
-  step?.(done, jobs.length, "");
   const values = await Promise.all(jobs.map(async (job) => {
+    step?.({ done, total: jobs.length, name: job.name, active: true });
     try {
       return { id: job.id, data: await job.run() };
     } catch {
       return null;
     } finally {
       done += 1;
-      step?.(done, jobs.length, job.name);
+      step?.({ done, total: jobs.length, name: job.name, active: false });
     }
   }));
   return values.filter(Boolean);
@@ -107,15 +107,15 @@ const browserCandidates = async (data, step) => {
   ];
   const out = [];
   let done = 0;
-  step?.(done, jobs.length, "");
   for (const [id, name, label] of jobs) {
+    step?.({ done, total: jobs.length, name: label, active: true });
     try {
       out.push({ id, data: await stream(name, data) });
     } catch {
       // Runtime does not expose this lossless codec.
     } finally {
       done += 1;
-      step?.(done, jobs.length, label);
+      step?.({ done, total: jobs.length, name: label, active: false });
     }
   }
   return out;
@@ -127,21 +127,13 @@ export const shrink = async (data, force = null, onStep = null) => {
     throw new Error("Unsupported compression codec");
   }
   if (force === rawCodec) {
-    onStep?.({ done: 1, total: 1, name: "Raw protobuf" });
+    onStep?.({ done: 1, total: 1, name: "raw protobuf", active: false });
     return { id: rawCodec, data: data.slice() };
   }
 
-  const track = (done, total, name) => {
-    const count = total + 1;
-    onStep?.({
-      done: done + 1,
-      total: count,
-      name: done === 0 ? "Raw protobuf" : name,
-    });
-  };
   const compressed = isNode
-    ? await nodeCandidates(data, track)
-    : await browserCandidates(data, track);
+    ? await nodeCandidates(data, onStep)
+    : await browserCandidates(data, onStep);
   const all = [{ id: rawCodec, data: data.slice() }, ...compressed];
   const candidates = all.filter((candidate) => force === null || candidate.id === force);
   if (candidates.length === 0) {
