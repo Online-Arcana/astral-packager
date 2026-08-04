@@ -6,6 +6,7 @@ export const defCodec = 2;
 export const zstdCodec = 3;
 export const maxRaw = 64 * 1024 * 1024;
 export const minCmp = 1024;
+export const maxCmpMs = 20_000;
 
 const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
 
@@ -23,7 +24,7 @@ const nodePack = async (id, data) => {
   if (id === zstdCodec && typeof zlib.zstdCompress === "function") {
     return nodeCall(zlib.zstdCompress, data, {
       params: {
-        [zlib.constants.ZSTD_c_compressionLevel]: 6,
+        [zlib.constants.ZSTD_c_compressionLevel]: 3,
         [zlib.constants.ZSTD_c_checksumFlag]: 0,
         [zlib.constants.ZSTD_c_contentSizeFlag]: 1,
       },
@@ -32,7 +33,7 @@ const nodePack = async (id, data) => {
   if (id === brCodec) {
     return nodeCall(zlib.brotliCompress, data, {
       params: {
-        [zlib.constants.BROTLI_PARAM_QUALITY]: 5,
+        [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
         [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_GENERIC,
         [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.byteLength,
       },
@@ -81,14 +82,28 @@ const browserPack = async (id, data, transform = null) => {
   const value = transform ?? browserTransform(id);
   if (!value) throw new Error("Unsupported compression codec");
   const writer = value.writable.getWriter();
-  await writer.write(data);
-  await writer.close();
-  return new Uint8Array(await new Response(value.readable).arrayBuffer());
+  let timer;
+  const work = (async () => {
+    await writer.write(data);
+    await writer.close();
+    return new Uint8Array(await new Response(value.readable).arrayBuffer());
+  })();
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      void writer.abort(new Error("Compression time limit exceeded"));
+      reject(new Error("Compression time limit exceeded"));
+    }, maxCmpMs);
+  });
+  try {
+    return await Promise.race([work, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 const browserChoice = (force) => {
   const ids = force === null
-    ? [zstdCodec, brCodec, defCodec]
+    ? [zstdCodec, defCodec, brCodec]
     : [force];
   for (const id of ids) {
     const transform = browserTransform(id);
@@ -109,15 +124,21 @@ export const shrink = async (data, force = null, onStep = null) => {
 
   let id;
   let packed;
-  if (isNode) {
-    id = await nodeChoice(force);
-    onStep?.({ done: 0, total: 1, name: label(id), active: true });
-    packed = await nodePack(id, data);
-  } else {
-    const choice = browserChoice(force);
-    id = choice.id;
-    onStep?.({ done: 0, total: 1, name: label(id), active: true });
-    packed = await browserPack(id, data, choice.transform);
+  try {
+    if (isNode) {
+      id = await nodeChoice(force);
+      onStep?.({ done: 0, total: 1, name: label(id), active: true });
+      packed = await nodePack(id, data);
+    } else {
+      const choice = browserChoice(force);
+      id = choice.id;
+      onStep?.({ done: 0, total: 1, name: label(id), active: true });
+      packed = await browserPack(id, data, choice.transform);
+    }
+  } catch (cause) {
+    if (force !== null) throw cause;
+    onStep?.({ done: 1, total: 1, name: "raw protobuf", active: false });
+    return { id: rawCodec, data: data.slice() };
   }
   onStep?.({ done: 1, total: 1, name: label(id), active: false });
 
