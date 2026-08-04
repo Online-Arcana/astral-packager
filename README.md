@@ -4,7 +4,7 @@ Turn any strict JSON astral profile into a compact, portable and password-encryp
 
 ## Use
 
-Requires Node.js 22 or later.
+Requires Node.js 22.15 or later.
 
 ```sh
 npm run build
@@ -44,7 +44,7 @@ strict JSON
   → readable public-key header + ciphertext
 ```
 
-The packager compares uncompressed protobuf, Brotli and raw DEFLATE and stores the smallest result. Node uses maximum Brotli and DEFLATE settings; browsers use the lossless encoders exposed by their runtime. Compression never participates in identity generation.
+The packager compares uncompressed protobuf, maximum-quality Brotli, maximum raw DEFLATE and maximum-level Zstandard, then stores the smallest result. Browsers use the lossless encoders exposed by their runtime. Compression never participates in identity generation.
 
 Only the base64url Ed25519 public key is a readable identity field. Binary KDF, codec and length metadata are also visible so tools can identify and unpack the format. The complete header is authenticated.
 
