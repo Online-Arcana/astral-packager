@@ -82,11 +82,12 @@ const browserPack = async (id, data, transform = null) => {
   const value = transform ?? browserTransform(id);
   if (!value) throw new Error("Unsupported compression codec");
   const writer = value.writable.getWriter();
+  const output = new Response(value.readable).arrayBuffer();
   let timer;
   const work = (async () => {
     await writer.write(data);
     await writer.close();
-    return new Uint8Array(await new Response(value.readable).arrayBuffer());
+    return new Uint8Array(await output);
   })();
   const limit = new Promise((_, reject) => {
     timer = setTimeout(() => {
@@ -173,9 +174,10 @@ export const expand = async (id, data, size) => {
     if (!transform) throw new Error("This browser cannot unpack the container compression codec");
     try {
       const writer = transform.writable.getWriter();
+      const output = new Response(transform.readable).arrayBuffer();
       await writer.write(data);
       await writer.close();
-      out = new Uint8Array(await new Response(transform.readable).arrayBuffer());
+      out = new Uint8Array(await output);
     } catch {
       throw new Error("This browser cannot unpack the container compression codec");
     }
