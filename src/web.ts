@@ -13,6 +13,7 @@ const file = one("#file");
 const password = one("#password");
 const confirm = one("#confirm");
 const confirmRow = one("#confirm-row");
+const confirmError = one("#confirm-error");
 const passwordReveal = one("#password-reveal");
 const confirmReveal = one("#confirm-reveal");
 const button = one("#make");
@@ -34,19 +35,40 @@ const outputName = (name) => {
 };
 
 const setReveal = (toggle, input, shown) => {
+  const open = toggle.querySelector(".eye-open");
+  const closed = toggle.querySelector(".eye-closed");
   input.type = shown ? "text" : "password";
   toggle.setAttribute("aria-pressed", String(shown));
   toggle.setAttribute("aria-label", shown ? "Hide password" : "Reveal password");
-  toggle.querySelector(".eye-open").hidden = !shown;
-  toggle.querySelector(".eye-closed").hidden = shown;
+  open.hidden = !shown;
+  closed.hidden = shown;
+  open.style.display = shown ? "block" : "none";
+  closed.style.display = shown ? "none" : "block";
 };
 
-const confirmNeeded = () => !confirmRow.hidden;
+const setRepeat = (needed) => {
+  confirmRow.hidden = !needed;
+  confirmRow.style.display = needed ? "grid" : "none";
+  confirm.required = needed;
+  confirm.disabled = !needed;
+  if (needed) return;
+  confirm.value = "";
+  confirm.setCustomValidity("");
+  confirm.setAttribute("aria-invalid", "false");
+  confirmError.hidden = true;
+  confirmError.style.display = "none";
+};
+
+const confirmNeeded = () => !confirm.disabled;
 
 const checkMatch = () => {
-  const matches = !confirmNeeded() || confirm.value === password.value;
+  const needed = confirmNeeded();
+  const matches = !needed || confirm.value === password.value;
+  const show = needed && confirm.value.length > 0 && !matches;
   confirm.setCustomValidity(matches ? "" : "Passwords do not match.");
   confirm.setAttribute("aria-invalid", String(!matches));
+  confirmError.hidden = !show;
+  confirmError.style.display = show ? "block" : "none";
   return matches;
 };
 
@@ -71,12 +93,9 @@ const showAudit = () => {
 const toggleMain = () => {
   const shown = password.type === "password";
   setReveal(passwordReveal, password, shown);
-  confirmRow.hidden = shown;
-  confirm.required = !shown;
-  confirm.value = "";
-  confirm.setCustomValidity("");
-  confirm.setAttribute("aria-invalid", "false");
+  setRepeat(!shown);
   setReveal(confirmReveal, confirm, false);
+  checkMatch();
 };
 
 passwordReveal.addEventListener("click", toggleMain);
@@ -88,6 +107,9 @@ password.addEventListener("input", () => {
   checkMatch();
 });
 confirm.addEventListener("input", checkMatch);
+setReveal(passwordReveal, password, false);
+setReveal(confirmReveal, confirm, false);
+setRepeat(true);
 showAudit();
 checkMatch();
 
@@ -115,8 +137,7 @@ form.addEventListener("submit", async (event) => {
     confirm.value = "";
     setReveal(passwordReveal, password, false);
     setReveal(confirmReveal, confirm, false);
-    confirmRow.hidden = false;
-    confirm.required = true;
+    setRepeat(true);
     checkMatch();
     showAudit();
   } catch (cause) {
