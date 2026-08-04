@@ -1,11 +1,14 @@
 // @ts-check
 
 import { get32, text, u32, utf8 } from "./bytes.ts";
+import { decodeSigns, emptySigns, encodeSigns } from "./meta.ts";
 
 const magic1 = utf8("ASTRPKG1");
 const magic2 = utf8("ASTRPKG2");
+const magic3 = utf8("ASTRPKG3");
 const fixed1 = 28;
 const fixed2 = 32;
+const fixed3 = 32;
 const codecs = [0, 1, 2, 3];
 export const saltSize = 16;
 export const nonceSize = 12;
@@ -61,7 +64,7 @@ export const makeHead = (iterations, salt, nonce, pub, cipherSize) => {
   return out;
 };
 
-export const makeHead2 = (iterations, salt, nonce, pub, cipherSize, codec, rawSize) => {
+const makeModern = (magic, major, iterations, salt, nonce, pub, cipherSize, codec, rawSize, extra) => {
   needBase(iterations, salt, nonce, pub, cipherSize);
   if (!codecs.includes(codec)) throw new Error("Invalid compression codec");
   if (!Number.isSafeInteger(rawSize) || rawSize < 1 || rawSize > maxPayload) {
@@ -69,10 +72,10 @@ export const makeHead2 = (iterations, salt, nonce, pub, cipherSize, codec, rawSi
   }
 
   const pubBytes = utf8(pub);
-  const headSize = fixed2 + salt.byteLength + nonce.byteLength + pubBytes.byteLength;
+  const headSize = fixed2 + salt.byteLength + nonce.byteLength + pubBytes.byteLength + extra.byteLength;
   const out = new Uint8Array(headSize);
-  out.set(magic2, 0);
-  out[8] = 2;
+  out.set(magic, 0);
+  out[8] = major;
   out[9] = 0;
   out[10] = 1;
   out[11] = 1;
@@ -90,17 +93,47 @@ export const makeHead2 = (iterations, salt, nonce, pub, cipherSize, codec, rawSi
   out.set(nonce, at);
   at += nonce.byteLength;
   out.set(pubBytes, at);
+  at += pubBytes.byteLength;
+  out.set(extra, at);
   return out;
 };
 
-const tail = (data, fixed, iterations, saltLen, nonceLen, pubLen, cipherLen, headLen) => {
+export const makeHead2 = (iterations, salt, nonce, pub, cipherSize, codec, rawSize) => makeModern(
+  magic2,
+  2,
+  iterations,
+  salt,
+  nonce,
+  pub,
+  cipherSize,
+  codec,
+  rawSize,
+  new Uint8Array(),
+);
+
+export const makeHead3 = (iterations, salt, nonce, pub, signs, cipherSize, codec, rawSize) => makeModern(
+  magic3,
+  3,
+  iterations,
+  salt,
+  nonce,
+  pub,
+  cipherSize,
+  codec,
+  rawSize,
+  encodeSigns(signs),
+);
+
+const tail = (data, fixed, iterations, saltLen, nonceLen, pubLen, cipherLen, headLen, allowExtra = false) => {
   if (saltLen !== saltSize || nonceLen !== nonceSize || pubLen !== pubSize) {
     throw new Error("Invalid astral-pack header");
   }
   if (iterations < minIter || iterations > maxIter || cipherLen < tagSize || cipherLen > maxCipher) {
     throw new Error("Unsafe astral-pack parameters");
   }
-  if (headLen !== fixed + saltLen + nonceLen + pubLen || data.byteLength !== headLen + cipherLen) {
+  const base = fixed + saltLen + nonceLen + pubLen;
+  const validHead = allowExtra ? headLen >= base && headLen <= base + 256 : headLen === base;
+  if (!validHead || data.byteLength !== headLen + cipherLen) {
     throw new Error("Truncated or extended astral-pack container");
   }
 
@@ -110,6 +143,7 @@ const tail = (data, fixed, iterations, saltLen, nonceLen, pubLen, cipherLen, hea
   const nonce = data.slice(at, at + nonceLen);
   at += nonceLen;
   const pub = text(data.slice(at, at + pubLen));
+  at += pubLen;
   if (!validPub(pub)) throw new Error("Invalid public key header");
 
   return {
@@ -117,8 +151,43 @@ const tail = (data, fixed, iterations, saltLen, nonceLen, pubLen, cipherLen, hea
     salt,
     nonce,
     pub,
+    extra: data.slice(at, headLen),
     head: data.slice(0, headLen),
     cipher: data.slice(headLen),
+  };
+};
+
+const modern = (data, magic, major, withSigns) => {
+  if (!same(data.slice(0, 8), magic)) return null;
+  if (data.byteLength < fixed2) throw new Error("Truncated astral-pack header");
+  if (data[8] !== major || data[9] !== 0) throw new Error("Unsupported astral-pack version");
+  if (data[10] !== 1) throw new Error("Unsupported password KDF");
+  if (data[11] !== 1) throw new Error("Unsupported encryption algorithm");
+  if (!codecs.includes(data[12])) throw new Error("Unsupported compression codec");
+  if (data[13] !== 2) throw new Error("Unsupported encrypted payload format");
+  if (data[14] !== 0 || data[15] !== 0) throw new Error("Unsupported astral-pack flags");
+
+  const rawSize = get32(data, 20);
+  if (rawSize < 1 || rawSize > maxPayload) throw new Error("Unsafe unpacked payload size");
+  const value = tail(
+    data,
+    fixed2,
+    get32(data, 16),
+    saltSize,
+    nonceSize,
+    pubSize,
+    get32(data, 24),
+    get32(data, 28),
+    withSigns,
+  );
+  const signs = withSigns ? decodeSigns(value.extra) : emptySigns();
+  return {
+    ver: major,
+    codec: data[12],
+    payload: data[13],
+    rawSize,
+    signs,
+    ...value,
   };
 };
 
@@ -135,6 +204,7 @@ export const readBox = (data) => {
       codec: 0,
       payload: 1,
       rawSize: null,
+      signs: emptySigns(),
       ...tail(
         data,
         fixed1,
@@ -148,34 +218,9 @@ export const readBox = (data) => {
     };
   }
 
-  if (same(data.slice(0, 8), magic2)) {
-    if (data.byteLength < fixed2) throw new Error("Truncated astral-pack header");
-    if (data[8] !== 2 || data[9] !== 0) throw new Error("Unsupported astral-pack version");
-    if (data[10] !== 1) throw new Error("Unsupported password KDF");
-    if (data[11] !== 1) throw new Error("Unsupported encryption algorithm");
-    if (!codecs.includes(data[12])) throw new Error("Unsupported compression codec");
-    if (data[13] !== 2) throw new Error("Unsupported encrypted payload format");
-    if (data[14] !== 0 || data[15] !== 0) throw new Error("Unsupported astral-pack flags");
-
-    const rawSize = get32(data, 20);
-    if (rawSize < 1 || rawSize > maxPayload) throw new Error("Unsafe unpacked payload size");
-    return {
-      ver: 2,
-      codec: data[12],
-      payload: data[13],
-      rawSize,
-      ...tail(
-        data,
-        fixed2,
-        get32(data, 16),
-        saltSize,
-        nonceSize,
-        pubSize,
-        get32(data, 24),
-        get32(data, 28),
-      ),
-    };
-  }
-
+  const v2 = modern(data, magic2, 2, false);
+  if (v2) return v2;
+  const v3 = modern(data, magic3, 3, true);
+  if (v3) return v3;
   throw new Error("Not an astral-pack container");
 };

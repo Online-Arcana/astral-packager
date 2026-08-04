@@ -3,9 +3,10 @@
 import { cat, eq, text, utf8, wipe } from "./bytes.ts";
 import { expand, rawCodec, shrink } from "./cmp.ts";
 import { edPub, lockKey, rand, rootFor, signSeed } from "./crypto.ts";
-import { makeHead2, prodIter, readBox, tagSize } from "./fmt.ts";
+import { makeHead3, prodIter, readBox, tagSize } from "./fmt.ts";
 import { Id } from "./id.ts";
 import { canon, parse } from "./json.ts";
+import { sameSigns, signsFor } from "./meta.ts";
 import { decodePb } from "./pb.ts";
 import { decodePb2, encodePb2 } from "./pb2.ts";
 import { auditPwd, pwdInput, pwdOk } from "./pwd.ts";
@@ -43,6 +44,7 @@ export const packWith = async (source, password, opt = {}) => {
   needPwd(password);
   mark(opt, 0, "Reading and validating profile");
   const value = parse(source);
+  const signs = signsFor(value);
   mark(opt, 0, "Canonicalising profile");
   const clean = canon(value);
   const json = utf8(clean);
@@ -80,11 +82,12 @@ export const packWith = async (source, password, opt = {}) => {
     smallData = small.data;
     mark(opt, 85, small.id === rawCodec ? "Using raw protobuf" : "Compressed payload ready");
     const cipherSize = smallData.byteLength + tagSize;
-    const head = makeHead2(
+    const head = makeHead3(
       iterations,
       salt,
       nonce,
       pub.text,
+      signs,
       cipherSize,
       small.id,
       raw.byteLength,
@@ -104,6 +107,7 @@ export const packWith = async (source, password, opt = {}) => {
     return {
       bytes,
       pub: pub.text,
+      signs,
       info: {
         json: json.byteLength,
         pb: raw.byteLength,
@@ -119,6 +123,11 @@ export const packWith = async (source, password, opt = {}) => {
 export const pack = (source, password, progress = null) => packWith(source, password, { progress });
 
 export const readPub = (data) => readBox(data).pub;
+
+export const readMeta = (data) => {
+  const box = readBox(data);
+  return { ver: box.ver, pub: box.pub, signs: box.signs };
+};
 
 export const open = async (data, password) => {
   needInput(password);
@@ -171,6 +180,11 @@ export const open = async (data, password) => {
       cleanBytes = utf8(clean);
     }
 
+    const signs = signsFor(value);
+    if (box.ver === 3 && !sameSigns(signs, box.signs)) {
+      throw new Error("Public signs do not match the encrypted chart");
+    }
+
     const identity = await rootFor(cleanBytes, ent);
     root = identity.root;
     doc = identity.doc;
@@ -183,7 +197,7 @@ export const open = async (data, password) => {
     const id = new Id(root, doc, box.pub);
     root = undefined;
     doc = undefined;
-    return { json: value, source: clean, pub: box.pub, id };
+    return { json: value, source: clean, pub: box.pub, signs, id };
   } finally {
     wipeAll(rawKey, packed, raw, sourceBytes, ent, cleanBytes, seed, root, doc);
   }

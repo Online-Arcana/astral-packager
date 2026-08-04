@@ -5,6 +5,7 @@ const modules = [
   "../src/pb2.ts",
   "../src/cmp.ts",
   "../src/crypto.ts",
+  "../src/meta.ts",
   "../src/fmt.ts",
   "../src/pwd.ts",
   "../src/id.ts",

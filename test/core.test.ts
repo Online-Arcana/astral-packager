@@ -2,12 +2,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cat, utf8 } from "../src/bytes.ts";
-import { packWith, open, readPub } from "../src/core.ts";
+import { cat, get32, text, utf8 } from "../src/bytes.ts";
+import { packWith, open, readMeta, readPub } from "../src/core.ts";
 import { edPub, lockKey, rootFor, signSeed } from "../src/crypto.ts";
-import { makeHead, tagSize } from "../src/fmt.ts";
+import { makeHead, makeHead2, tagSize } from "../src/fmt.ts";
 import { clean, parse, canon } from "../src/json.ts";
 import { encodePb } from "../src/pb.ts";
+import { encodePb2 } from "../src/pb2.ts";
 
 const password = "correct horse battery staple";
 const opt = {
@@ -15,6 +16,42 @@ const opt = {
   ent: Uint8Array.from({ length: 32 }, (_, i) => i),
   salt: Uint8Array.from({ length: 16 }, (_, i) => i + 32),
   nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 48),
+};
+
+const chart = {
+  "astral-calculation": {
+    system: {
+      points: {
+        sun: { position: { value: { sign: "capricorn" } } },
+        moon: { position: { value: { sign: "virgo" } } },
+        ascendant: { position: { value: { sign: "capricorn" } } },
+        midheaven: { position: { value: { sign: "libra" } } },
+        descendant: { position: { value: { sign: "cancer" } } },
+        imum_coeli: { position: { value: { sign: "aries" } } },
+      },
+    },
+  },
+};
+
+const expectedSigns = {
+  solar: "capricorn",
+  lunar: "virgo",
+  ascending: "capricorn",
+  midheaven: "libra",
+  descending: "cancer",
+  imumCoeli: "aries",
+};
+
+const encrypt = async (head, payload) => {
+  const rawKey = await lockKey(password, opt.salt, opt.iterations);
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt"]);
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({
+    name: "AES-GCM",
+    iv: opt.nonce,
+    additionalData: head,
+    tagLength: 128,
+  }, key, payload));
+  return cat(head, cipher);
 };
 
 const oldPack = async (source) => {
@@ -25,15 +62,26 @@ const oldPack = async (source) => {
   const pub = await edPub(seed);
   const payload = encodePb(json, opt.ent);
   const head = makeHead(opt.iterations, opt.salt, opt.nonce, pub.text, payload.byteLength + tagSize);
-  const rawKey = await lockKey(password, opt.salt, opt.iterations);
-  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt"]);
-  const cipher = new Uint8Array(await crypto.subtle.encrypt({
-    name: "AES-GCM",
-    iv: opt.nonce,
-    additionalData: head,
-    tagLength: 128,
-  }, key, payload));
-  return cat(head, cipher);
+  return encrypt(head, payload);
+};
+
+const oldPack2 = async (source) => {
+  const value = parse(source);
+  const json = utf8(canon(value));
+  const { root, doc } = await rootFor(json, opt.ent);
+  const seed = await signSeed(root, doc);
+  const pub = await edPub(seed);
+  const payload = encodePb2(value, opt.ent);
+  const head = makeHead2(
+    opt.iterations,
+    opt.salt,
+    opt.nonce,
+    pub.text,
+    payload.byteLength + tagSize,
+    0,
+    payload.byteLength,
+  );
+  return encrypt(head, payload);
 };
 
 test("canonical JSON rejects duplicate keys and ignores formatting", () => {
@@ -63,6 +111,49 @@ test("typed protobuf preserves every JSON value kind", async () => {
     assert.deepEqual(JSON.parse(value.source), JSON.parse(source));
     value.id.drop();
   }
+});
+
+test("version 3 exposes public signs without removing them from the payload", async () => {
+  const packed = await packWith(JSON.stringify(chart), password, opt);
+  assert.equal(text(packed.bytes.slice(0, 8)), "ASTRPKG3");
+  const meta = readMeta(packed.bytes);
+  assert.equal(meta.ver, 3);
+  assert.equal(meta.pub, packed.pub);
+  assert.deepEqual(meta.signs, expectedSigns);
+  assert.deepEqual(packed.signs, expectedSigns);
+
+  const headSize = get32(packed.bytes, 28);
+  assert.equal(text(packed.bytes.slice(103, headSize)), [
+    "",
+    "solar_sign=capricorn",
+    "lunar_sign=virgo",
+    "ascending_sign=capricorn",
+    "midheaven_sign=libra",
+    "descending_sign=cancer",
+    "imum_coeli_sign=aries",
+    "",
+  ].join("\n"));
+
+  const value = await open(packed.bytes, password);
+  assert.deepEqual(value.signs, expectedSigns);
+  assert.equal(value.json["astral-calculation"].system.points.sun.position.value.sign, "capricorn");
+  assert.equal(value.json["astral-calculation"].system.points.imum_coeli.position.value.sign, "aries");
+  value.id.drop();
+});
+
+test("generic JSON keeps blank public sign fields", async () => {
+  const packed = await packWith('{"generic":true}', password, opt);
+  assert.deepEqual(readMeta(packed.bytes).signs, {
+    solar: "",
+    lunar: "",
+    ascending: "",
+    midheaven: "",
+    descending: "",
+    imumCoeli: "",
+  });
+  const value = await open(packed.bytes, password);
+  assert.deepEqual(value.signs, readMeta(packed.bytes).signs);
+  value.id.drop();
 });
 
 test("pack and open use one deterministic identity", async () => {
@@ -136,16 +227,31 @@ test("compression does not participate in identity derivation", async () => {
   restored.id.drop();
 });
 
-test("version 1 containers remain readable", async () => {
-  const bytes = await oldPack('{"old":true,"n":7}');
-  const value = await open(bytes, password);
-  assert.equal(value.source, '{"n":7,"old":true}');
-  assert.equal(readPub(bytes), value.pub);
-  value.id.drop();
+test("version 1 and version 2 containers remain readable", async () => {
+  const v1 = await oldPack('{"old":true,"n":7}');
+  const value1 = await open(v1, password);
+  assert.equal(value1.source, '{"n":7,"old":true}');
+  assert.equal(readPub(v1), value1.pub);
+  assert.equal(readMeta(v1).ver, 1);
+  value1.id.drop();
+
+  const v2 = await oldPack2(JSON.stringify(chart));
+  const value2 = await open(v2, password);
+  assert.equal(readMeta(v2).ver, 2);
+  assert.deepEqual(readMeta(v2).signs, {
+    solar: "",
+    lunar: "",
+    ascending: "",
+    midheaven: "",
+    descending: "",
+    imumCoeli: "",
+  });
+  assert.deepEqual(value2.signs, expectedSigns);
+  value2.id.drop();
 });
 
 test("wrong passwords and altered bytes fail", async () => {
-  const packed = await packWith('{"ok":true}', password, opt);
+  const packed = await packWith(JSON.stringify(chart), password, opt);
   await assert.rejects(() => open(packed.bytes, "this password is definitely wrong"), /Wrong password or damaged/u);
   const changed = packed.bytes.slice();
   changed[changed.length - 20] ^= 1;
@@ -153,6 +259,9 @@ test("wrong passwords and altered bytes fail", async () => {
   const head = packed.bytes.slice();
   head[60] ^= 1;
   await assert.rejects(() => open(head, password));
+  const signs = packed.bytes.slice();
+  signs[109] ^= 1;
+  await assert.rejects(() => open(signs, password));
 });
 
 test("fresh entropy creates a different public identity", async () => {

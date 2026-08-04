@@ -1,6 +1,6 @@
 {
   "name": "astral-packager",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Encrypt JSON astral profiles into portable identity containers.",
   "type": "module",
   "license": "GPL-3.0-only",

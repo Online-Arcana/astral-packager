@@ -1,15 +1,15 @@
 # Container format
 
-`.astral` is an Astral Packager binary container, not a plain protobuf file. Version 2 keeps the public Ed25519 key readable, stores all private identity material inside typed protobuf, compresses that protobuf losslessly, then encrypts it with AES-256-GCM.
+`.astral` is an Astral Packager binary container, not a plain protobuf file. Version 3 keeps selected identity metadata readable, stores the complete JSON value and private identity entropy inside typed protobuf, compresses that protobuf losslessly, then encrypts it with AES-256-GCM.
 
-Version 1 remains readable for compatibility.
+Versions 1 and 2 remain readable.
 
-## Version 2 header
+## Version 3 header
 
 | Offset | Size | Value |
 |---:|---:|---|
-| 0 | 8 | ASCII `ASTRPKG2` |
-| 8 | 1 | major version: `2` |
+| 0 | 8 | ASCII `ASTRPKG3` |
+| 8 | 1 | major version: `3` |
 | 9 | 1 | minor version: `0` |
 | 10 | 1 | password KDF: `1` = PBKDF2-HMAC-SHA-256 |
 | 11 | 1 | cipher: `1` = AES-256-GCM |
@@ -23,9 +23,41 @@ Version 1 remains readable for compatibility.
 | 28 | 4 | complete header length, unsigned big-endian |
 | 32 | 16 | random password salt |
 | 48 | 12 | random AES-GCM nonce |
-| 60 | 43 | base64url Ed25519 public-key text |
+| 60 | 43 | unpadded base64url Ed25519 public-key text |
+| 103 | variable | UTF-8 public sign block |
 
-The version-2 header is always 103 bytes. The complete header is AES-GCM additional authenticated data. Tools may read the public key without a password, but any header change makes authenticated decryption fail.
+The sign block starts with a newline so the preceding public key is visually terminated. It ends at the complete header length from offset 28 and has this exact line order and final newline:
+
+```text
+
+solar_sign=<sign>
+lunar_sign=<sign>
+ascending_sign=<sign>
+midheaven_sign=<sign>
+descending_sign=<sign>
+imum_coeli_sign=<sign>
+```
+
+Each value is either blank or one lowercase zodiac name:
+
+```text
+aries taurus gemini cancer leo virgo libra scorpio sagittarius capricorn aquarius pisces
+```
+
+The packager reads the values from:
+
+```text
+astral-calculation.system.points.sun.position.value.sign
+astral-calculation.system.points.moon.position.value.sign
+astral-calculation.system.points.ascendant.position.value.sign
+astral-calculation.system.points.midheaven.position.value.sign
+astral-calculation.system.points.descendant.position.value.sign
+astral-calculation.system.points.imum_coeli.position.value.sign
+```
+
+The fields remain in the encrypted payload. Generic JSON without those paths remains valid and receives blank public values. A present non-zodiac value is rejected.
+
+The complete variable-length header is AES-GCM additional authenticated data. Any change to the public key, signs, codec, lengths, salt or nonce makes authenticated decryption fail. After decryption, the reader re-extracts the six signs from the recovered JSON and requires an exact match with the header.
 
 ## Compression codecs
 
@@ -36,11 +68,9 @@ The version-2 header is always 103 bytes. The complete header is AES-GCM additio
 | 2 | raw DEFLATE stream without zlib or gzip framing |
 | 3 | Zstandard frame |
 
-The codec ID determines the exact unpacking rule. The compression settings used while creating the file are not needed for decompression.
+The codec ID determines the exact unpacking rule. Compression settings are not required for decompression and do not participate in identity generation.
 
 ### Packaging policy
-
-Packaging uses one balanced compression pass instead of comparing several maximum-level encoders:
 
 - payloads smaller than 1,024 bytes remain raw protobuf;
 - Node uses Zstandard level 3 when available and otherwise Brotli quality 4;
@@ -49,15 +79,11 @@ Packaging uses one balanced compression pass instead of comparing several maximu
 - an unavailable, failed or timed-out automatic compression pass falls back to raw protobuf;
 - raw protobuf is retained whenever compressed output is not smaller.
 
-A caller using the internal forced-codec test interface may request one specific codec. Production packaging does not run competing codecs.
-
-Compression happens before encryption. AES-GCM ciphertext is intentionally random-looking and must never be compressed afterward.
-
-Changing codec or compression settings cannot change the user identity. Identity derivation uses the recovered canonical semantic JSON and private entropy rather than compressed or protobuf bytes.
+Compression happens before encryption. AES-GCM ciphertext must not be compressed afterward.
 
 ## Typed protobuf payload
 
-The uncompressed plaintext follows this logical schema:
+The decrypted and decompressed plaintext follows this schema:
 
 ```proto
 message Pack {
@@ -75,7 +101,7 @@ message Value {
     sint64 integer = 4;
     double number = 5;
     bool boolean = 6;
-    bool null = 7;          // encoded as true
+    bool null = 7;
   }
 }
 
@@ -84,7 +110,7 @@ message Object {
 }
 
 message Pair {
-  uint32 key = 1;           // one-based index into Pack.key
+  uint32 key = 1;
   Value value = 2;
 }
 
@@ -93,45 +119,52 @@ message Array {
 }
 ```
 
-Object keys are collected once, sorted lexicographically and referenced by integer. Object fields are encoded in ascending key-reference order. Safe JSON integers use protobuf zig-zag integers; other finite JSON numbers use little-endian IEEE-754 doubles. Strings are UTF-8. Arrays preserve input order.
-
-This generic schema accepts any valid JSON value and does not depend on the current Astrology schema. A future typed Astrology protobuf can receive a new payload-format ID without changing the outer encrypted container.
+Object keys are collected once, sorted lexicographically and referenced by one-based integer. Object fields are encoded in ascending key-reference order. Safe JSON integers use protobuf zig-zag integers; other finite JSON numbers use little-endian IEEE-754 doubles. Strings are UTF-8. Arrays preserve input order.
 
 ## Packing order
 
 ```text
 strict JSON
   → semantic value
+  → extract six public signs
   → canonical JSON used for identity derivation
-  → typed protobuf with private entropy
+  → typed protobuf containing the complete value and private entropy
   → balanced lossless compression or raw protobuf
   → AES-256-GCM ciphertext
-  → authenticated public header + ciphertext
+  → authenticated version-3 public header + ciphertext
 ```
 
 ## Unpacking order
 
-1. Check `ASTRPKG2`, versions, lengths and limits.
-2. Read the public key and password-lock metadata.
+1. Check `ASTRPKG3`, versions, lengths and limits.
+2. Parse the public key and six-sign text block.
 3. Derive the AES key from the supplied password.
 4. Authenticate the full header and decrypt the ciphertext.
 5. Decompress according to header byte 12, or copy bytes directly for codec `0`.
 6. Require the exact uncompressed length from header offset 20.
-7. Decode payload format `2` with the schema above.
+7. Decode payload format `2`.
 8. Rebuild canonical JSON from the semantic value.
-9. Derive the identity root from canonical JSON plus encrypted entropy.
-10. Regenerate the Ed25519 public key and require an exact match with the readable header.
+9. Re-extract the six signs and require an exact match with the public block.
+10. Derive the identity root from canonical JSON plus encrypted entropy.
+11. Regenerate the Ed25519 public key and require an exact match with the readable key.
 
 A failure at any stage rejects the container.
 
+## Version 2
+
+Version 2 begins with `ASTRPKG2`. It uses the same fixed fields through the public key at offset 60, but its header is exactly 103 bytes and contains no sign block. Its encrypted payload and compression rules are otherwise compatible with payload format `2`.
+
+A version-2 public-only read can return the key but cannot expose signs without decrypting the payload.
+
 ## Version 1
 
-Version 1 begins with `ASTRPKG1`. Its ciphertext decrypts directly to a small protobuf envelope containing canonical JSON bytes and identity entropy. It has no compression metadata. Version-2 readers retain this decoder so existing identities are not stranded.
+Version 1 begins with `ASTRPKG1`. Its ciphertext decrypts directly to an uncompressed protobuf envelope containing canonical JSON bytes and identity entropy. It has no compression or public-sign metadata.
 
 ## Limits
 
 - maximum ciphertext: 64 MiB
 - maximum uncompressed protobuf: 64 MiB
+- maximum version-3 public block: 256 bytes beyond the key
 - automatic compression threshold: 1 KiB
 - browser compression budget: 20 seconds
 - entropy: exactly 32 bytes

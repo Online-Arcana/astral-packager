@@ -19,10 +19,16 @@ chart.json       → chart.astral
 chart.astral     → chart.packed.astral
 ```
 
-Read the visible public key without decrypting:
+Read the visible public key only:
 
 ```sh
 node dist/bin.js pub chart.astral
+```
+
+Read the complete public header without a password:
+
+```sh
+node dist/bin.js head chart.astral
 ```
 
 Decrypt to a local inspection copy:
@@ -33,7 +39,7 @@ node dist/bin.js open chart.astral
 
 ## Container
 
-Version 2 uses this order:
+Version 3 uses this order:
 
 ```text
 strict JSON
@@ -41,18 +47,29 @@ strict JSON
   → typed protobuf
   → balanced lossless compression
   → AES-256-GCM
-  → readable public-key header + ciphertext
+  → readable authenticated header + ciphertext
 ```
+
+The readable header contains the Ed25519 public key followed by these six lines when present in an Astrology chart:
+
+```text
+solar_sign=capricorn
+lunar_sign=virgo
+ascending_sign=capricorn
+midheaven_sign=libra
+descending_sign=cancer
+imum_coeli_sign=aries
+```
+
+A newline separates the public key from the first field, so a raw text scan remains readable. The signs are copied from `astral-calculation.system.points` and remain inside the encrypted payload as well. Generic JSON remains supported and receives blank public sign values. The complete header is authenticated, and decryption re-extracts the six values from the payload and requires an exact match.
 
 Packaging performs one moderate compression pass rather than running several maximum-level encoders. Payloads under 1 KiB stay as raw protobuf. Node prefers Zstandard level 3 and falls back to Brotli quality 4. Browsers prefer Zstandard, then raw DEFLATE, then Brotli. Raw protobuf is retained whenever compression does not reduce the payload.
 
 Browser compression has a 20-second budget and falls back to raw protobuf instead of continuing to spend CPU. The intended total packaging time is below 30 seconds on supported hardware, with ordinary astral files expected to finish much sooner.
 
-Only the base64url Ed25519 public key is a readable identity field. Binary KDF, codec and length metadata are also visible so tools can identify and unpack the format. The complete header is authenticated.
+The encrypted typed protobuf contains the complete JSON value and 256 bits of private identity entropy. The file plus its password regenerates the signing identity and every labelled child key. Neither item is useful alone.
 
-The encrypted typed protobuf contains the full JSON value and 256 bits of private identity entropy. The file plus its password regenerates the signing identity and every labelled child key. Neither item is useful alone.
-
-Version-1 containers remain readable.
+Version-1 and version-2 containers remain readable.
 
 ## Passwords
 

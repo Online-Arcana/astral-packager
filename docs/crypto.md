@@ -15,7 +15,7 @@ sign seed   = HKDF-SHA-256(root, JSON digest, "astral-pack/sign/ed25519/v1")
 public key  = Ed25519(sign seed)
 ```
 
-Changing either the semantic JSON document or the private entropy changes every user key. Formatting, object-key order, protobuf encoding and compression do not.
+Changing either the semantic JSON document or the private entropy changes every user key. Formatting, object-key order, protobuf encoding, compression and the public sign copies do not.
 
 Child keys use labelled HKDF scopes. Consumers can derive independent profile, reading, device or ledger keys without reusing signing material. The exact byte-level derivation is specified in [Decrypting and unpacking](unpack.md).
 
@@ -23,14 +23,17 @@ Child keys use labelled HKDF scopes. Consumers can derive independent profile, r
 
 ```text
 semantic JSON
-  → typed protobuf
+  → extract public sign copies
+  → typed protobuf containing the complete JSON value
   → balanced lossless compression or raw protobuf
   → password-derived AES-256-GCM encryption
 ```
 
+The six signs remain inside the encrypted payload. Version 3 also writes authenticated plaintext copies for public use. After decryption, the reader re-extracts the signs from the recovered chart and requires an exact match with the public header.
+
 Compression happens before encryption and is not an identity input. Repacking the same private payload with another supported codec preserves the public identity and every derived key.
 
-Version 2 records the codec and uncompressed protobuf length in the authenticated public header. The reader decrypts, decompresses, decodes protobuf, reconstructs canonical JSON, regenerates the identity and checks that its public key matches the header.
+Version 3 records the codec, uncompressed protobuf length, public key and six public signs in the authenticated header. Versions 1 and 2 remain readable.
 
 ## Password lock
 
@@ -39,6 +42,21 @@ The chosen password is normalised with Unicode NFKC, encoded as UTF-8 and derive
 The password is not part of identity generation. Re-encrypting the same private payload under another password preserves the public identity and all derived keys.
 
 The KDF and cipher are versioned in the header. A later Argon2id container version can strengthen password guessing resistance without changing identity derivation.
+
+## Public information
+
+A version-3 file reveals without a password:
+
+- the Ed25519 public key;
+- solar sign;
+- lunar sign;
+- ascending sign;
+- Midheaven sign;
+- descending sign;
+- Imum Coeli sign;
+- binary algorithm and length metadata required to parse the container.
+
+It does not reveal the remaining chart, private identity entropy, private signing seed, identity root or child keys.
 
 ## Password audit
 
@@ -52,7 +70,7 @@ Opening an existing container does not reapply the current creation policy. A co
 
 ## Possession model
 
-- File without password: exposes only the public key and binary encryption metadata.
+- File without password: exposes the public key, six public signs and binary encryption metadata.
 - Password without file: contains no identity entropy or chart.
 - File and password: regenerates the user signing identity and all child keys.
 
