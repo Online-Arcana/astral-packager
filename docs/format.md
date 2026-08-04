@@ -26,15 +26,16 @@ Versions 1 and 2 remain readable.
 | 60 | 43 | unpadded base64url Ed25519 public-key text |
 | 103 | variable | UTF-8 public sign block |
 
-The sign block ends at the complete header length from offset 28 and has this exact line order and final newline:
+The sign block starts with a newline so the preceding public key is visually terminated. It ends at the complete header length from offset 28 and has this exact line order and final newline:
 
 ```text
-solar=<sign>
-lunar=<sign>
-ascending=<sign>
-midheaven=<sign>
-descending=<sign>
-imum_coeli=<sign>
+
+solar_sign=<sign>
+lunar_sign=<sign>
+ascending_sign=<sign>
+midheaven_sign=<sign>
+descending_sign=<sign>
+imum_coeli_sign=<sign>
 ```
 
 Each value is either blank or one lowercase zodiac name:
