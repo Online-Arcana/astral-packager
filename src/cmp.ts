@@ -81,11 +81,18 @@ export const shrink = async (data, force = null) => {
   const compressed = isNode
     ? await nodeCandidates(data)
     : await browserCandidates(data);
-  const candidates = [{ id: rawCodec, data: data.slice() }, ...compressed]
-    .filter((candidate) => force === null || candidate.id === force);
-  if (candidates.length === 0) throw new Error("Requested compression codec is unavailable");
+  const all = [{ id: rawCodec, data: data.slice() }, ...compressed];
+  const candidates = all.filter((candidate) => force === null || candidate.id === force);
+  if (candidates.length === 0) {
+    for (const candidate of all) candidate.data.fill(0);
+    throw new Error("Requested compression codec is unavailable");
+  }
   candidates.sort((left, right) => left.data.byteLength - right.data.byteLength || left.id - right.id);
-  return candidates[0];
+  const winner = candidates[0];
+  for (const candidate of all) {
+    if (candidate !== winner) candidate.data.fill(0);
+  }
+  return winner;
 };
 
 export const expand = async (id, data, size) => {
@@ -120,6 +127,7 @@ export const expand = async (id, data, size) => {
   }
 
   if (out.byteLength !== size) {
+    out.fill(0);
     throw new Error("Decompressed payload length does not match the container header");
   }
   return out;
