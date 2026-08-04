@@ -1,13 +1,12 @@
 # GitHub Pages
 
-The site uses the same `src/core.ts` implementation as the CLI. It performs all parsing, key derivation and encryption locally and has no network permission in its content-security policy.
+The site uses the same `src/core.ts` and `src/pwd.ts` implementations as the CLI. Parsing, password auditing, key derivation and encryption all run locally. The page has no network permission in its content-security policy.
 
-The Pages workflow is manual so creating or updating the repository does not consume an Actions run.
+Relevant changes on `main` automatically run the Pages workflow. Manual dispatch remains available under **Actions → Pages**.
 
-1. Make the repository public.
-2. Open **Settings → Pages**.
-3. Select **GitHub Actions** as the source.
-4. Open **Actions → Pages → Run workflow**.
+1. Open **Settings → Pages**.
+2. Select **GitHub Actions** as the source.
+3. Push a relevant change to `main` or run the workflow manually.
 
 Local preview:
 
