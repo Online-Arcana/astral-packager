@@ -80,7 +80,7 @@ test("pack and open use one deterministic identity", async () => {
   await assert.rejects(() => value.id.sign(utf8("again")), /dropped/u);
 });
 
-test("pack reports monotonic staged progress", async () => {
+test("pack weights progress toward real compression work", async () => {
   const seen = [];
   const packed = await packWith(JSON.stringify({
     bodies: Array.from({ length: 40 }, (_, index) => ({ name: "Mars", index })),
@@ -90,7 +90,11 @@ test("pack reports monotonic staged progress", async () => {
   });
   assert.equal(seen[0].pct, 0);
   assert.equal(seen.at(-1).pct, 100);
-  assert.ok(seen.some((value) => value.stage.startsWith("Testing ")));
+  const first = seen.findIndex((value) => value.stage.startsWith("Compressing with "));
+  assert.ok(first > 0);
+  assert.ok(seen.slice(0, first + 1).every((value) => value.pct <= 1));
+  assert.ok(seen.some((value) => value.pct > 1 && value.pct <= 97));
+  assert.ok(seen.every((value) => !value.stage.startsWith("Testing ")));
   for (let index = 1; index < seen.length; index += 1) {
     assert.ok(seen[index].pct >= seen[index - 1].pct);
   }
