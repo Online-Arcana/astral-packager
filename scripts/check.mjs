@@ -2,6 +2,8 @@ const modules = [
   "../src/bytes.ts",
   "../src/json.ts",
   "../src/pb.ts",
+  "../src/pb2.ts",
+  "../src/cmp.ts",
   "../src/crypto.ts",
   "../src/fmt.ts",
   "../src/pwd.ts",
