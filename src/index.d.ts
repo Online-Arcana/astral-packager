@@ -2,7 +2,7 @@ export interface PackInfo {
   json: number;
   pb: number;
   packed: number;
-  codec: 0 | 1 | 2;
+  codec: 0 | 1 | 2 | 3;
 }
 
 export interface Packed {
