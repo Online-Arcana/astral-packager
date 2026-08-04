@@ -5,7 +5,7 @@ import { readFile, writeFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { emitKeypressEvents } from "node:readline";
-import { open, pack, pwdOk, readPub } from "./core.ts";
+import { auditPwd, open, pack, readPub } from "./core.ts";
 
 const help = () => {
   console.log(`astral-packager 0.1.0
@@ -48,10 +48,19 @@ const hidden = (label) => new Promise((resolve, reject) => {
   process.stdin.on("keypress", onKey);
 });
 
+const showAudit = (audit) => {
+  process.stderr.write(`Password score: ${audit.score}/4 — ${audit.label}\n`);
+  if (audit.ok) return;
+  process.stderr.write(`${audit.warning}\n`);
+  for (const tip of audit.suggestions) process.stderr.write(`- ${tip}\n`);
+};
+
 const password = async (confirm) => {
   const first = await hidden("Password: ");
-  if (!pwdOk(first)) throw new Error("Password must contain at least 16 characters");
   if (!confirm) return first;
+  const audit = auditPwd(first);
+  showAudit(audit);
+  if (!audit.ok) throw new Error("Choose a password scored Strong or Excellent");
   const second = await hidden("Again: ");
   if (first !== second) throw new Error("Passwords do not match");
   return first;
