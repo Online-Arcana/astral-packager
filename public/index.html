@@ -23,12 +23,23 @@
       </label>
       <label>
         Secure password
-        <input id="password" type="password" minlength="16" autocomplete="new-password" required>
-        <small>At least 16 characters. It cannot be recovered.</small>
+        <input id="password" type="password" minlength="10" maxlength="1024" autocomplete="new-password" aria-describedby="pwd-note pwd-tips" required>
+        <small>Use 10 or more characters and reach a Strong or Excellent score. Randomness matters more than satisfying a composition checklist.</small>
       </label>
+
+      <section id="pwd-audit" class="pwd-audit" data-score="0" aria-live="polite">
+        <div class="pwd-head">
+          <strong>Password strength</strong>
+          <span id="pwd-score">Not scored</span>
+        </div>
+        <meter id="pwd-meter" min="0" max="4" value="0">0 out of 4</meter>
+        <p id="pwd-note">Enter a password to score it.</p>
+        <ul id="pwd-tips"></ul>
+      </section>
+
       <label>
         Repeat password
-        <input id="confirm" type="password" minlength="16" autocomplete="new-password" required>
+        <input id="confirm" type="password" minlength="10" maxlength="1024" autocomplete="new-password" required>
       </label>
       <button id="make" type="submit">Create encrypted container</button>
     </form>
