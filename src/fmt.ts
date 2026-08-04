@@ -6,6 +6,7 @@ const magic1 = utf8("ASTRPKG1");
 const magic2 = utf8("ASTRPKG2");
 const fixed1 = 28;
 const fixed2 = 32;
+const codecs = [0, 1, 2, 3];
 export const saltSize = 16;
 export const nonceSize = 12;
 export const pubSize = 43;
@@ -62,7 +63,7 @@ export const makeHead = (iterations, salt, nonce, pub, cipherSize) => {
 
 export const makeHead2 = (iterations, salt, nonce, pub, cipherSize, codec, rawSize) => {
   needBase(iterations, salt, nonce, pub, cipherSize);
-  if (![0, 1, 2].includes(codec)) throw new Error("Invalid compression codec");
+  if (!codecs.includes(codec)) throw new Error("Invalid compression codec");
   if (!Number.isSafeInteger(rawSize) || rawSize < 1 || rawSize > maxPayload) {
     throw new Error("Invalid unpacked payload size");
   }
@@ -152,7 +153,7 @@ export const readBox = (data) => {
     if (data[8] !== 2 || data[9] !== 0) throw new Error("Unsupported astral-pack version");
     if (data[10] !== 1) throw new Error("Unsupported password KDF");
     if (data[11] !== 1) throw new Error("Unsupported encryption algorithm");
-    if (![0, 1, 2].includes(data[12])) throw new Error("Unsupported compression codec");
+    if (!codecs.includes(data[12])) throw new Error("Unsupported compression codec");
     if (data[13] !== 2) throw new Error("Unsupported encrypted payload format");
     if (data[14] !== 0 || data[15] !== 0) throw new Error("Unsupported astral-pack flags");
 
