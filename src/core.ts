@@ -1,7 +1,7 @@
 // @ts-check
 
 import { cat, eq, text, utf8, wipe } from "./bytes.ts";
-import { expand, shrink } from "./cmp.ts";
+import { expand, rawCodec, shrink } from "./cmp.ts";
 import { edPub, lockKey, rand, rootFor, signSeed } from "./crypto.ts";
 import { makeHead2, prodIter, readBox, tagSize } from "./fmt.ts";
 import { Id } from "./id.ts";
@@ -69,16 +69,16 @@ export const packWith = async (source, password, opt = {}) => {
     mark(opt, 1, "Protobuf ready");
     const small = await shrink(raw, opt.codec ?? null, ({ done, total, name, active }) => {
       const count = Math.max(1, total);
-      const pct = 1 + ((done / count) * 96);
+      const pct = 1 + ((done / count) * 84);
       const stage = active
         ? `Compressing with ${name}`
-        : done >= total
-          ? "Compression complete"
+        : name === "raw protobuf"
+          ? "Compression not needed"
           : `Compressed with ${name}`;
       mark(opt, pct, stage);
     });
     smallData = small.data;
-    mark(opt, 97, "Smallest payload selected");
+    mark(opt, 85, small.id === rawCodec ? "Using raw protobuf" : "Compressed payload ready");
     const cipherSize = smallData.byteLength + tagSize;
     const head = makeHead2(
       iterations,
@@ -89,7 +89,7 @@ export const packWith = async (source, password, opt = {}) => {
       small.id,
       raw.byteLength,
     );
-    mark(opt, 97, "Deriving encryption key");
+    mark(opt, 85, "Deriving encryption key");
     rawKey = await lockKey(password, salt, iterations);
     mark(opt, 99, "Encrypting payload");
     const key = await aes(rawKey, "encrypt");
