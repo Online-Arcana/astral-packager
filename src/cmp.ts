@@ -16,11 +16,13 @@ const stream = async (name, data, open = false) => {
   return new Uint8Array(await new Response(transform.readable).arrayBuffer());
 };
 
-const nodeCall = (fn, data, options) => new Promise((resolve, reject) => {
-  fn(data, options, (error, value) => {
+const nodeCall = (fn, data, options = null) => new Promise((resolve, reject) => {
+  const done = (error, value) => {
     if (error) reject(error);
     else resolve(new Uint8Array(value));
-  });
+  };
+  if (options === null) fn(data, done);
+  else fn(data, options, done);
 });
 
 const nodeCandidates = async (data) => {
@@ -102,7 +104,7 @@ export const expand = async (id, data, size) => {
         ? zlib.inflateRaw
         : null;
     if (!fn) throw new Error("Unsupported compression codec");
-    out = await nodeCall(fn, data, undefined);
+    out = await nodeCall(fn, data);
   } else {
     const name = id === brCodec
       ? "brotli"
