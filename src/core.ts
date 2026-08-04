@@ -6,17 +6,20 @@ import { makeHead, prodIter, readBox, tagSize } from "./fmt.ts";
 import { Id } from "./id.ts";
 import { canon, parse } from "./json.ts";
 import { decodePb, encodePb } from "./pb.ts";
+import { auditPwd, pwdInput, pwdOk } from "./pwd.ts";
 
 const aes = async (raw, use) => crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, [use]);
 
-export const pwdOk = (password) => {
-  const value = password.normalize("NFKC");
-  return [...value].length >= 16 && value.trim().length > 0 && utf8(value).byteLength <= 1024;
+const needPwd = (password) => {
+  const audit = auditPwd(password);
+  if (!audit.ok) throw new Error(audit.warning);
 };
 
-const needPwd = (password) => {
-  if (!pwdOk(password)) throw new Error("Password must contain at least 16 characters");
+const needInput = (password) => {
+  if (!pwdInput(password)) throw new Error("Password is required");
 };
+
+export { auditPwd, pwdOk };
 
 export const packWith = async (source, password, opt = {}) => {
   needPwd(password);
@@ -57,7 +60,7 @@ export const pack = (source, password) => packWith(source, password);
 export const readPub = (data) => readBox(data).pub;
 
 export const open = async (data, password) => {
-  needPwd(password);
+  needInput(password);
   const box = readBox(data);
   const rawKey = await lockKey(password, box.salt, box.iterations);
   let payload;
