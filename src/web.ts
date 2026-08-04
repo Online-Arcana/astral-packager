@@ -25,14 +25,77 @@ const auditBox = one("#pwd-audit");
 const meter = one("#pwd-meter");
 const score = one("#pwd-score");
 const tips = one("#pwd-tips");
+const job = one("#job");
+const jobBar = one("#job-bar");
+const jobStage = one("#job-stage");
+const jobPct = one("#job-pct");
+const jobElapsed = one("#job-elapsed");
+const jobEta = one("#job-eta");
 const codec = ["raw", "Brotli", "DEFLATE", "Zstandard"];
 let url = null;
+let started = 0;
+let pct = 0;
+let timer = null;
 
 const outputName = (name) => {
   if (name.endsWith(".astral.raw")) return name.slice(0, -4);
   if (name.endsWith(".json")) return `${name.slice(0, -5)}.astral`;
   if (name.endsWith(".astral")) return `${name.slice(0, -7)}.packed.astral`;
   return `${name}.astral`;
+};
+
+const clock = (seconds) => {
+  if (!Number.isFinite(seconds)) return "—";
+  const value = Math.max(0, seconds);
+  if (value < 10) return `${value.toFixed(1)}s`;
+  if (value < 60) return `${Math.round(value)}s`;
+  const mins = Math.floor(value / 60);
+  const secs = Math.round(value % 60).toString().padStart(2, "0");
+  return `${mins}m ${secs}s`;
+};
+
+const showTime = () => {
+  if (started === 0) return;
+  const elapsed = (performance.now() - started) / 1000;
+  const eta = pct > 0 && pct < 100
+    ? elapsed * ((100 - pct) / pct)
+    : pct === 100
+      ? 0
+      : Number.NaN;
+  jobElapsed.textContent = `Elapsed ${clock(elapsed)}`;
+  jobEta.textContent = `ETA ${clock(eta)}`;
+};
+
+const showJob = (next, stage) => {
+  const value = Math.max(0, Math.min(100, Math.round(next)));
+  if (value < pct) return;
+  pct = value;
+  jobBar.value = pct;
+  jobBar.textContent = `${pct}%`;
+  jobPct.textContent = `${pct}%`;
+  jobStage.textContent = stage;
+  showTime();
+};
+
+const startJob = () => {
+  if (timer !== null) clearInterval(timer);
+  started = performance.now();
+  pct = 0;
+  job.hidden = false;
+  job.style.display = "grid";
+  job.setAttribute("aria-busy", "true");
+  showJob(0, "Preparing");
+  timer = window.setInterval(showTime, 100);
+};
+
+const stopJob = (stage, done) => {
+  if (timer !== null) clearInterval(timer);
+  timer = null;
+  if (done) showJob(100, stage);
+  else jobStage.textContent = stage;
+  job.setAttribute("aria-busy", "false");
+  showTime();
+  jobEta.textContent = done ? "ETA 0.0s" : "ETA —";
 };
 
 const setReveal = (toggle, input, shown) => {
@@ -123,16 +186,22 @@ form.addEventListener("submit", async (event) => {
   if (!audit.ok) return status.textContent = "Choose a password scored Strong or Excellent.";
   if (!checkMatch()) return status.textContent = "Passwords do not match.";
   button.disabled = true;
-  status.textContent = "Encoding, compressing and encrypting locally…";
+  startJob();
+  showJob(1, "Reading source file");
+  status.textContent = "Packaging locally…";
   try {
     const source = await selected.text();
-    const value = await pack(source, password.value);
+    showJob(3, "Source file read");
+    const value = await pack(source, password.value, ({ pct: next, stage }) => {
+      showJob(next, stage);
+    });
     if (url) URL.revokeObjectURL(url);
     url = URL.createObjectURL(new Blob([value.bytes], { type: "application/octet-stream" }));
     download.href = url;
     download.download = outputName(selected.name);
     publicKey.value = value.pub;
     result.hidden = false;
+    stopJob("Container complete", true);
     status.textContent = `Ready: ${value.info.json} B JSON → ${value.info.pb} B protobuf → ${value.info.packed} B ${codec[value.info.codec]}. Nothing was uploaded.`;
     password.value = "";
     confirm.value = "";
@@ -142,6 +211,7 @@ form.addEventListener("submit", async (event) => {
     checkMatch();
     showAudit();
   } catch (cause) {
+    stopJob("Packaging failed", false);
     status.textContent = cause instanceof Error ? cause.message : "Packaging failed.";
   } finally {
     button.disabled = false;
