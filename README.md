@@ -39,12 +39,14 @@ Version 2 uses this order:
 strict JSON
   → canonical semantic value
   → typed protobuf
-  → smallest available lossless encoding
+  → balanced lossless compression
   → AES-256-GCM
   → readable public-key header + ciphertext
 ```
 
-The packager compares uncompressed protobuf, maximum-quality Brotli, maximum raw DEFLATE and maximum-level Zstandard, then stores the smallest result. Browsers use the lossless encoders exposed by their runtime. Compression never participates in identity generation.
+Packaging performs one moderate compression pass rather than running several maximum-level encoders. Payloads under 1 KiB stay as raw protobuf. Node prefers Zstandard level 3 and falls back to Brotli quality 4. Browsers prefer Zstandard, then raw DEFLATE, then Brotli. Raw protobuf is retained whenever compression does not reduce the payload.
+
+Browser compression has a 20-second budget and falls back to raw protobuf instead of continuing to spend CPU. The intended total packaging time is below 30 seconds on supported hardware, with ordinary astral files expected to finish much sooner.
 
 Only the base64url Ed25519 public key is a readable identity field. Binary KDF, codec and length metadata are also visible so tools can identify and unpack the format. The complete header is authenticated.
 
@@ -63,7 +65,7 @@ npm run build:site
 npm start
 ```
 
-The page reports the current packaging stage and percentage, elapsed time and an ETA calculated from elapsed time and completed percentage. GitHub Pages deploys automatically after relevant changes reach `main`. The workflow can also be run manually.
+The page reports packaging percentage, elapsed time and ETA. Fast preparation accounts for only 1%; the progress range is weighted toward compression and password-key derivation. GitHub Pages deploys automatically after relevant changes reach `main`.
 
 ## Documentation
 

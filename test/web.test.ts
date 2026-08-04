@@ -31,9 +31,12 @@ test("password mismatch is visible and blocks submission", () => {
   assert.match(css, /input\[aria-invalid="true"\]/u);
 });
 
-test("packaging progress reports percentage, elapsed time and ETA", () => {
+test("packaging progress delays ETA until compression advances", () => {
   assert.match(html, /id="job-bar"[\s\S]*max="100"[\s\S]*id="job-elapsed"[\s\S]*id="job-eta"/u);
+  assert.match(web, /if \(pct <= 1\)[\s\S]*ETA calculating…/u);
   assert.match(web, /elapsed \* \(\(100 - pct\) \/ pct\)/u);
+  assert.match(web, /showJob\(0, "Reading source file"\)/u);
+  assert.match(web, /showJob\(0, "Source file read"\)/u);
   assert.match(web, /window\.setInterval\(showTime, 100\)/u);
   assert.match(web, /pack\(source, password\.value, \(\{ pct: next, stage \}\) =>/u);
   assert.match(css, /\.job\[hidden\], #result\[hidden\] \{ display: none; \}/u);

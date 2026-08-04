@@ -17,7 +17,7 @@ Scores run from `0` to `4`. New containers require `audit.ok === true`, currentl
 
 ## `pack(source, password, progress?)`
 
-Parses one strict JSON value, canonicalises it for identity derivation, generates private entropy, encodes the semantic value as typed protobuf, selects the smallest supported lossless encoding and encrypts it into a version-2 container.
+Parses one strict JSON value, canonicalises it for identity derivation, generates private entropy, encodes the semantic value as typed protobuf, applies one balanced lossless compression pass when useful and encrypts it into a version-2 container.
 
 ```ts
 const value = await pack(jsonText, password, ({ pct, stage }) => {
@@ -28,9 +28,11 @@ console.log(value.pub);
 console.log(value.info);
 ```
 
-Progress values are monotonic integers from `0` to `100`. They represent completed packaging stages and completed compression candidates. Web Crypto operations such as PBKDF2 and AES-GCM are indivisible, so their percentages advance when each operation finishes rather than pretending to expose internal progress.
+Progress values are monotonic integers from `0` to `100`. Fast parsing, identity and protobuf preparation occupy the first 1%. Compression occupies most of the visible range, followed by password-key derivation and AES-GCM. ETA should not be calculated from the initial 1% because those setup stages are intentionally weighted as near-instantaneous.
 
-`value.info` reports the canonical JSON, uncompressed protobuf and selected compressed sizes:
+Production packaging does not compare multiple codecs. It performs at most one moderate compression pass and preserves raw protobuf when compression is unavailable, times out in the browser or does not reduce the payload.
+
+`value.info` reports canonical JSON, uncompressed protobuf and stored payload sizes:
 
 ```ts
 interface PackInfo {
