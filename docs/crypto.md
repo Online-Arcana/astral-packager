@@ -27,10 +27,28 @@ The password is not part of identity generation. Re-encrypting the same private 
 
 The KDF and cipher are versioned in the header. A later Argon2id container version can strengthen password guessing resistance without changing identity derivation.
 
+## Password audit
+
+New containers require at least 10 Unicode characters and a local score of 3/4 or 4/4. Length is only one input. The auditor also considers the usable character space and penalises:
+
+- common passwords and predictable variants
+- joined common-word chains
+- dates and years
+- counting and alphabetic sequences
+- keyboard walks
+- repeated characters or chunks
+- familiar capitalise-number-symbol shapes
+
+A random 10-character password can pass. A much longer predictable sentence can fail. There is no required uppercase, number or symbol checklist.
+
+The score is a conservative estimate, not a guarantee or a precise entropy measurement. No password, hash, prefix or audit request leaves the process or browser.
+
+Opening an existing container does not reapply the current creation policy. A correct older password must remain usable even after the auditor evolves.
+
 ## Possession model
 
 - File without password: exposes only the public key and binary encryption metadata.
 - Password without file: contains no identity entropy or chart.
 - File and password: regenerates the user signing identity and all child keys.
 
-A stolen file allows offline password guesses. Use a long, unique passphrase; the application enforces a minimum of 16 characters but cannot measure whether a memorable password is truly unpredictable.
+A stolen file allows unlimited offline guesses. Prefer a password manager, genuinely random characters, or unrelated words selected randomly. Do not rely on familiar phrases with predictable substitutions.
