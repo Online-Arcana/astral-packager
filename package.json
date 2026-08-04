@@ -1,0 +1,35 @@
+{
+  "name": "astral-packager",
+  "version": "0.1.0",
+  "description": "Encrypt JSON astral profiles into portable identity containers.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "astral-pack": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:site": "node scripts/build.mjs --site",
+    "check": "node --experimental-strip-types scripts/check.mjs",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "ci": "npm run check && npm test && npm run build",
+    "cli": "node --experimental-strip-types src/bin.ts",
+    "start": "node scripts/serve.mjs"
+  }
+}

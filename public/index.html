@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="dark light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Astral Packager</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Local identity packaging</p>
+      <h1>Astral Packager</h1>
+      <p>Encrypt a JSON astral profile into a portable <code>.astral</code> identity container. The file and password stay on this device.</p>
+    </header>
+
+    <form id="pack">
+      <label>
+        Raw profile
+        <input id="file" type="file" accept=".astral,.raw,.json,application/json" required>
+      </label>
+      <label>
+        Secure password
+        <input id="password" type="password" minlength="16" autocomplete="new-password" required>
+        <small>At least 16 characters. It cannot be recovered.</small>
+      </label>
+      <label>
+        Repeat password
+        <input id="confirm" type="password" minlength="16" autocomplete="new-password" required>
+      </label>
+      <button id="make" type="submit">Create encrypted container</button>
+    </form>
+
+    <p id="status" role="status" aria-live="polite">Ready.</p>
+
+    <section id="result" hidden>
+      <label>
+        Public Ed25519 key
+        <input id="public-key" type="text" readonly>
+      </label>
+      <a id="download" class="download" href="#" download>Download .astral</a>
+      <p class="note">The public key is the only readable identity field. It is safe to share and can seed an identicon.</p>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
