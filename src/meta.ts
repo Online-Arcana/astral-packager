@@ -38,7 +38,7 @@ const at = (value, path) => {
 };
 
 const sign = (value, name) => {
-  if (value === undefined || value === null) return "";
+  if (value === undefined || value === null || value === "") return "";
   if (typeof value !== "string") throw new Error(`Invalid public ${name} sign`);
   const clean = value.toLowerCase();
   if (!zodiac.has(clean)) throw new Error(`Invalid public ${name} sign`);
