@@ -94,11 +94,23 @@ test("compression does not participate in identity derivation", async () => {
     codec: 1,
     nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 80),
   });
+  const zstd = await packWith(source, password, {
+    ...opt,
+    codec: 3,
+    nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 96),
+  });
   assert.equal(raw.pub, br.pub);
+  assert.equal(raw.pub, zstd.pub);
   assert.equal(raw.info.codec, 0);
   assert.equal(br.info.codec, 1);
+  assert.equal(zstd.info.codec, 3);
   assert.ok(br.info.packed < br.info.pb);
+  assert.ok(zstd.info.packed < zstd.info.pb);
   assert.ok(br.bytes.byteLength < raw.bytes.byteLength);
+  assert.ok(zstd.bytes.byteLength < raw.bytes.byteLength);
+  const restored = await open(zstd.bytes, password);
+  assert.equal(restored.pub, raw.pub);
+  restored.id.drop();
 });
 
 test("version 1 containers remain readable", async () => {
