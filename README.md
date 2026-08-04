@@ -11,13 +11,15 @@ npm run build
 node dist/bin.js chart.astral.raw
 ```
 
-The CLI requests a password twice without echoing it and writes the output beside the source:
+The CLI requests a password twice without echoing it, shows a 0–4 strength score and writes the output beside the source:
 
 ```text
 chart.astral.raw → chart.astral
 chart.json       → chart.astral
 chart.astral     → chart.packed.astral
 ```
+
+New containers require at least 10 characters and a Strong or Excellent score. Long common phrases, dates, sequences, keyboard walks and predictable substitutions are rejected even when they satisfy the length requirement.
 
 Read the public key without decrypting:
 
@@ -44,7 +46,7 @@ npm run build:site
 npm start
 ```
 
-The repository includes a manual GitHub Pages workflow for deployment after the repository becomes public.
+GitHub Pages deploys automatically after relevant changes reach `main`. The workflow can also be run manually.
 
 ## Documentation
 
@@ -60,8 +62,6 @@ npm run check
 npm test
 npm run build
 ```
-
-# deployment push
 
 Maintained source stays under `src/`. Generated output stays under `dist/`.
 
