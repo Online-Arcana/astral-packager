@@ -124,12 +124,13 @@ test("version 3 exposes public signs without removing them from the payload", as
 
   const headSize = get32(packed.bytes, 28);
   assert.equal(text(packed.bytes.slice(103, headSize)), [
-    "solar=capricorn",
-    "lunar=virgo",
-    "ascending=capricorn",
-    "midheaven=libra",
-    "descending=cancer",
-    "imum_coeli=aries",
+    "",
+    "solar_sign=capricorn",
+    "lunar_sign=virgo",
+    "ascending_sign=capricorn",
+    "midheaven_sign=libra",
+    "descending_sign=cancer",
+    "imum_coeli_sign=aries",
     "",
   ].join("\n"));
 
