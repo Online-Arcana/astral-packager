@@ -61,6 +61,8 @@ npm test
 npm run build
 ```
 
+# deployment push
+
 Maintained source stays under `src/`. Generated output stays under `dist/`.
 
 ## Licence
