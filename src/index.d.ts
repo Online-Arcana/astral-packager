@@ -3,6 +3,16 @@ export interface Packed {
   pub: string;
 }
 
+export interface PwdAudit {
+  score: 0 | 1 | 2 | 3 | 4;
+  label: "Unsafe" | "Weak" | "Fair" | "Strong" | "Excellent";
+  ok: boolean;
+  length: number;
+  bits: number;
+  warning: string;
+  suggestions: string[];
+}
+
 export class Id {
   readonly pub: string;
   sign(data: Uint8Array): Promise<Uint8Array>;
@@ -17,6 +27,8 @@ export interface Opened {
   id: Id;
 }
 
+export const pwdMin: 10;
+export function auditPwd(password: string): PwdAudit;
 export function pwdOk(password: string): boolean;
 export function pack(source: string, password: string): Promise<Packed>;
 export function open(data: Uint8Array, password: string): Promise<Opened>;
