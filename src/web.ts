@@ -25,7 +25,7 @@ const auditBox = one("#pwd-audit");
 const meter = one("#pwd-meter");
 const score = one("#pwd-score");
 const tips = one("#pwd-tips");
-const codec = ["raw", "Brotli", "DEFLATE"];
+const codec = ["raw", "Brotli", "DEFLATE", "Zstandard"];
 let url = null;
 
 const outputName = (name) => {
