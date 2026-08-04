@@ -3,6 +3,7 @@
 export const rawCodec = 0;
 export const brCodec = 1;
 export const defCodec = 2;
+export const zstdCodec = 3;
 export const maxRaw = 64 * 1024 * 1024;
 
 const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
@@ -31,7 +32,7 @@ const nodeCandidates = async (data) => {
     [zlib.constants.BROTLI_PARAM_QUALITY]: 11,
     [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.byteLength,
   };
-  const [brGeneric, brText, defDefault, defFiltered] = await Promise.all([
+  const base = await Promise.all([
     nodeCall(zlib.brotliCompress, data, {
       params: {
         ...brBase,
@@ -51,17 +52,34 @@ const nodeCandidates = async (data) => {
       strategy: zlib.constants.Z_FILTERED,
     }),
   ]);
-  return [
-    { id: brCodec, data: brGeneric },
-    { id: brCodec, data: brText },
-    { id: defCodec, data: defDefault },
-    { id: defCodec, data: defFiltered },
+  const out = [
+    { id: brCodec, data: base[0] },
+    { id: brCodec, data: base[1] },
+    { id: defCodec, data: base[2] },
+    { id: defCodec, data: base[3] },
   ];
+
+  if (typeof zlib.zstdCompress === "function") {
+    const zstd = await nodeCall(zlib.zstdCompress, data, {
+      params: {
+        [zlib.constants.ZSTD_c_compressionLevel]: 22,
+        [zlib.constants.ZSTD_c_strategy]: zlib.constants.ZSTD_btultra2,
+        [zlib.constants.ZSTD_c_checksumFlag]: 0,
+        [zlib.constants.ZSTD_c_contentSizeFlag]: 1,
+      },
+    });
+    out.push({ id: zstdCodec, data: zstd });
+  }
+  return out;
 };
 
 const browserCandidates = async (data) => {
   const out = [];
-  for (const [id, name] of [[brCodec, "brotli"], [defCodec, "deflate-raw"]]) {
+  for (const [id, name] of [
+    [brCodec, "brotli"],
+    [defCodec, "deflate-raw"],
+    [zstdCodec, "zstd"],
+  ]) {
     try {
       out.push({ id, data: await stream(name, data) });
     } catch {
@@ -73,7 +91,7 @@ const browserCandidates = async (data) => {
 
 export const shrink = async (data, force = null) => {
   if (data.byteLength > maxRaw) throw new Error("Payload is too large");
-  if (force !== null && ![rawCodec, brCodec, defCodec].includes(force)) {
+  if (force !== null && ![rawCodec, brCodec, defCodec, zstdCodec].includes(force)) {
     throw new Error("Unsupported compression codec");
   }
   if (force === rawCodec) return { id: rawCodec, data: data.slice() };
@@ -109,15 +127,19 @@ export const expand = async (id, data, size) => {
       ? zlib.brotliDecompress
       : id === defCodec
         ? zlib.inflateRaw
-        : null;
-    if (!fn) throw new Error("Unsupported compression codec");
+        : id === zstdCodec
+          ? zlib.zstdDecompress
+          : null;
+    if (typeof fn !== "function") throw new Error("Unsupported compression codec");
     out = await nodeCall(fn, data);
   } else {
     const name = id === brCodec
       ? "brotli"
       : id === defCodec
         ? "deflate-raw"
-        : null;
+        : id === zstdCodec
+          ? "zstd"
+          : null;
     if (!name) throw new Error("Unsupported compression codec");
     try {
       out = await stream(name, data, true);
