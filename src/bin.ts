@@ -5,15 +5,16 @@ import { readFile, writeFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { emitKeypressEvents } from "node:readline";
-import { auditPwd, open, pack, readPub } from "./core.ts";
+import { auditPwd, open, pack, readMeta, readPub } from "./core.ts";
 
 const help = () => {
-  console.log(`astral-packager 0.4.0
+  console.log(`astral-packager 0.5.0
 
 Usage:
   astral-pack <json-file>
   astral-pack open <container>
   astral-pack pub <container>
+  astral-pack head <container>
 
 The pack and open commands request passwords without echoing them.`);
 };
@@ -89,18 +90,36 @@ const absent = async (file) => {
   }
 };
 
+const cap = (value) => value ? value[0].toUpperCase() + value.slice(1) : "";
+
+const showSigns = (value) => {
+  console.log(`Solar sign: ${cap(value.solar)}`);
+  console.log(`Lunar sign: ${cap(value.lunar)}`);
+  console.log(`Ascending sign: ${cap(value.ascending)}`);
+  console.log(`Midheaven sign: ${cap(value.midheaven)}`);
+  console.log(`Descending sign: ${cap(value.descending)}`);
+  console.log(`Imum Coeli sign: ${cap(value.imumCoeli)}`);
+};
+
 const codec = ["raw", "Brotli", "DEFLATE", "Zstandard"];
 
 const run = async () => {
   const args = process.argv.slice(2);
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") return help();
-  if (args[0] === "--version" || args[0] === "-v") return console.log("0.4.0");
-  const cmd = args[0] === "open" || args[0] === "pub" ? args.shift() : "pack";
+  if (args[0] === "--version" || args[0] === "-v") return console.log("0.5.0");
+  const cmd = ["open", "pub", "head"].includes(args[0]) ? args.shift() : "pack";
   const file = args[0];
   if (!file || args.length !== 1) throw new Error("Exactly one input file is required");
   const data = new Uint8Array(await readFile(file));
   if (cmd === "pub") {
     console.log(readPub(data));
+    return;
+  }
+  if (cmd === "head") {
+    const value = readMeta(data);
+    console.log(`Container version: ${value.ver}`);
+    console.log(`Public key: ${value.pub}`);
+    showSigns(value.signs);
     return;
   }
   if (cmd === "open") {
@@ -112,6 +131,7 @@ const run = async () => {
     value.id.drop();
     console.log(`Wrote ${target}`);
     console.log(`Public key: ${value.pub}`);
+    showSigns(value.signs);
     return;
   }
   const target = outPack(file);
@@ -123,6 +143,7 @@ const run = async () => {
   console.log(`Wrote ${target}`);
   console.log(`Payload: ${value.info.json} B JSON → ${value.info.pb} B protobuf → ${value.info.packed} B ${codec[value.info.codec]}`);
   console.log(`Public key: ${value.pub}`);
+  showSigns(value.signs);
 };
 
 run().catch((cause) => {
