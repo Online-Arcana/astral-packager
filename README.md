@@ -19,15 +19,10 @@ chart.json       → chart.astral
 chart.astral     → chart.packed.astral
 ```
 
-Read the visible public key only:
+Inspect the public header without a password:
 
 ```sh
 node dist/bin.js pub chart.astral
-```
-
-Read the complete public header without a password:
-
-```sh
 node dist/bin.js head chart.astral
 ```
 
@@ -39,7 +34,7 @@ node dist/bin.js open chart.astral
 
 ## Container
 
-Version 3 uses this order:
+Version 4 packages in this order:
 
 ```text
 strict JSON
@@ -47,10 +42,12 @@ strict JSON
   → typed protobuf
   → balanced lossless compression
   → AES-256-GCM
-  → readable authenticated header + ciphertext
+  → authenticated public header + ciphertext
 ```
 
-The readable header contains the Ed25519 public key followed by these six lines when present in an Astrology chart:
+The public header contains the **exact raw 32-byte Ed25519 public key** at fixed offsets `60–91`. It is not stored as 43 text characters, shortened, hashed or transformed. Tools may encode those bytes as canonical unpadded base64url for display, but the container value is the raw 256-bit key.
+
+The key is followed at offset `92` by six readable UTF-8 fields:
 
 ```text
 solar_sign=capricorn
@@ -61,15 +58,17 @@ descending_sign=cancer
 imum_coeli_sign=aries
 ```
 
-A newline separates the public key from the first field, so a raw text scan remains readable. The signs are copied from `astral-calculation.system.points` and remain inside the encrypted payload as well. Generic JSON remains supported and receives blank public sign values. The complete header is authenticated, and decryption re-extracts the six values from the payload and requires an exact match.
-
-Packaging performs one moderate compression pass rather than running several maximum-level encoders. Payloads under 1 KiB stay as raw protobuf. Node prefers Zstandard level 3 and falls back to Brotli quality 4. Browsers prefer Zstandard, then raw DEFLATE, then Brotli. Raw protobuf is retained whenever compression does not reduce the payload.
-
-Browser compression has a 20-second budget and falls back to raw protobuf instead of continuing to spend CPU. The intended total packaging time is below 30 seconds on supported hardware, with ordinary astral files expected to finish much sooner.
+The signs are copied from `astral-calculation.system.points` and remain inside the encrypted payload. Generic JSON remains supported and receives blank public sign values. The complete header is AES-GCM authenticated. Opening the file regenerates the raw public key and re-extracts the signs from the encrypted payload, rejecting any mismatch.
 
 The encrypted typed protobuf contains the complete JSON value and 256 bits of private identity entropy. The file plus its password regenerates the signing identity and every labelled child key. Neither item is useful alone.
 
-Version-1 and version-2 containers remain readable.
+`ASTRPKG1`, `ASTRPKG2` and `ASTRPKG3` remain readable. New files use `ASTRPKG4`.
+
+## Compression
+
+Packaging performs one moderate lossless pass rather than comparing several maximum-level encoders. Payloads under 1 KiB stay as raw protobuf. Node prefers Zstandard level 3 and falls back to Brotli quality 4. Browsers prefer Zstandard, then raw DEFLATE, then Brotli. Raw protobuf is retained whenever compression does not reduce size.
+
+Browser compression has a 20-second budget and falls back to raw protobuf. The intended total packaging time is below 30 seconds on supported hardware, with ordinary astral files expected to finish much sooner.
 
 ## Passwords
 
@@ -82,7 +81,7 @@ npm run build:site
 npm start
 ```
 
-The page reports packaging percentage, elapsed time and ETA. Fast preparation accounts for only 1%; the progress range is weighted toward compression and password-key derivation. GitHub Pages deploys automatically after relevant changes reach `main`.
+The page reports packaging percentage, elapsed time and ETA. Fast preparation accounts for only 1%; progress is weighted toward compression and password-key derivation. GitHub Pages deploys automatically after relevant changes reach `main`.
 
 ## Documentation
 

@@ -8,8 +8,9 @@ export interface Signs {
 }
 
 export interface PublicMeta {
-  ver: 1 | 2 | 3;
+  ver: 1 | 2 | 3 | 4;
   pub: string;
+  pubRaw: Uint8Array;
   signs: Signs;
 }
 
@@ -28,6 +29,7 @@ export interface PackProgress {
 export interface Packed {
   bytes: Uint8Array;
   pub: string;
+  pubRaw: Uint8Array;
   signs: Signs;
   info: PackInfo;
 }
@@ -53,6 +55,7 @@ export interface Opened {
   json: unknown;
   source: string;
   pub: string;
+  pubRaw: Uint8Array;
   signs: Signs;
   id: Id;
 }
@@ -67,4 +70,5 @@ export function pack(
 ): Promise<Packed>;
 export function open(data: Uint8Array, password: string): Promise<Opened>;
 export function readPub(data: Uint8Array): string;
+export function readPubRaw(data: Uint8Array): Uint8Array;
 export function readMeta(data: Uint8Array): PublicMeta;
