@@ -1,3 +1,18 @@
+export interface Signs {
+  solar: string;
+  lunar: string;
+  ascending: string;
+  midheaven: string;
+  descending: string;
+  imumCoeli: string;
+}
+
+export interface PublicMeta {
+  ver: 1 | 2 | 3;
+  pub: string;
+  signs: Signs;
+}
+
 export interface PackInfo {
   json: number;
   pb: number;
@@ -13,6 +28,7 @@ export interface PackProgress {
 export interface Packed {
   bytes: Uint8Array;
   pub: string;
+  signs: Signs;
   info: PackInfo;
 }
 
@@ -37,6 +53,7 @@ export interface Opened {
   json: unknown;
   source: string;
   pub: string;
+  signs: Signs;
   id: Id;
 }
 
@@ -50,3 +67,4 @@ export function pack(
 ): Promise<Packed>;
 export function open(data: Uint8Array, password: string): Promise<Opened>;
 export function readPub(data: Uint8Array): string;
+export function readMeta(data: Uint8Array): PublicMeta;
