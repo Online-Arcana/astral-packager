@@ -12,6 +12,9 @@ const form = one("#pack");
 const file = one("#file");
 const password = one("#password");
 const confirm = one("#confirm");
+const confirmRow = one("#confirm-row");
+const passwordReveal = one("#password-reveal");
+const confirmReveal = one("#confirm-reveal");
 const button = one("#make");
 const status = one("#status");
 const result = one("#result");
@@ -20,7 +23,6 @@ const download = one("#download");
 const auditBox = one("#pwd-audit");
 const meter = one("#pwd-meter");
 const score = one("#pwd-score");
-const note = one("#pwd-note");
 const tips = one("#pwd-tips");
 let url = null;
 
@@ -31,6 +33,23 @@ const outputName = (name) => {
   return `${name}.astral`;
 };
 
+const setReveal = (toggle, input, shown) => {
+  input.type = shown ? "text" : "password";
+  toggle.setAttribute("aria-pressed", String(shown));
+  toggle.setAttribute("aria-label", shown ? "Hide password" : "Reveal password");
+  toggle.querySelector(".eye-open").hidden = !shown;
+  toggle.querySelector(".eye-closed").hidden = shown;
+};
+
+const confirmNeeded = () => !confirmRow.hidden;
+
+const checkMatch = () => {
+  const matches = !confirmNeeded() || confirm.value === password.value;
+  confirm.setCustomValidity(matches ? "" : "Passwords do not match.");
+  confirm.setAttribute("aria-invalid", String(!matches));
+  return matches;
+};
+
 const showAudit = () => {
   const audit = auditPwd(password.value);
   auditBox.dataset.score = String(audit.score);
@@ -38,8 +57,10 @@ const showAudit = () => {
   score.textContent = password.value.length === 0
     ? "Not scored"
     : `${audit.score}/4 — ${audit.label}`;
-  note.textContent = audit.warning;
-  tips.replaceChildren(...audit.suggestions.map((tip) => {
+  const suggestions = audit.ok
+    ? []
+    : [...new Set(["Use at least 10 characters.", ...audit.suggestions])];
+  tips.replaceChildren(...suggestions.map((tip) => {
     const item = document.createElement("li");
     item.textContent = tip;
     return item;
@@ -47,8 +68,28 @@ const showAudit = () => {
   return audit;
 };
 
-password.addEventListener("input", showAudit);
+const toggleMain = () => {
+  const shown = password.type === "password";
+  setReveal(passwordReveal, password, shown);
+  confirmRow.hidden = shown;
+  confirm.required = !shown;
+  confirm.value = "";
+  confirm.setCustomValidity("");
+  confirm.setAttribute("aria-invalid", "false");
+  setReveal(confirmReveal, confirm, false);
+};
+
+passwordReveal.addEventListener("click", toggleMain);
+confirmReveal.addEventListener("click", () => {
+  setReveal(confirmReveal, confirm, confirm.type === "password");
+});
+password.addEventListener("input", () => {
+  showAudit();
+  checkMatch();
+});
+confirm.addEventListener("input", checkMatch);
 showAudit();
+checkMatch();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -57,7 +98,7 @@ form.addEventListener("submit", async (event) => {
   if (!selected) return status.textContent = "Choose a JSON-style file.";
   const audit = showAudit();
   if (!audit.ok) return status.textContent = "Choose a password scored Strong or Excellent.";
-  if (password.value !== confirm.value) return status.textContent = "Passwords do not match.";
+  if (!checkMatch()) return status.textContent = "Passwords do not match.";
   button.disabled = true;
   status.textContent = "Encrypting locally…";
   try {
@@ -72,6 +113,11 @@ form.addEventListener("submit", async (event) => {
     status.textContent = "Container ready. Nothing was uploaded.";
     password.value = "";
     confirm.value = "";
+    setReveal(passwordReveal, password, false);
+    setReveal(confirmReveal, confirm, false);
+    confirmRow.hidden = false;
+    confirm.required = true;
+    checkMatch();
     showAudit();
   } catch (cause) {
     status.textContent = cause instanceof Error ? cause.message : "Packaging failed.";
