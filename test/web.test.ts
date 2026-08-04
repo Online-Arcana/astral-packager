@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+const css = await readFile(new URL("../public/style.css", import.meta.url), "utf8");
 const web = await readFile(new URL("../src/web.ts", import.meta.url), "utf8");
 
 test("password confirmation precedes the strength score", () => {
@@ -12,12 +13,22 @@ test("password confirmation precedes the strength score", () => {
 test("both password inputs expose local SVG reveal controls", () => {
   assert.match(html, /id="password-reveal"[\s\S]*class="eye eye-closed"[\s\S]*class="eye eye-open"/u);
   assert.match(html, /id="confirm-reveal"[\s\S]*class="eye eye-closed"[\s\S]*class="eye eye-open"/u);
+  assert.match(web, /open\.style\.display = shown \? "block" : "none";/u);
+  assert.match(web, /closed\.style\.display = shown \? "none" : "block";/u);
 });
 
 test("revealing the main password disables and hides confirmation", () => {
-  assert.match(web, /confirmRow\.hidden = shown;/u);
-  assert.match(web, /confirm\.required = !shown;/u);
+  assert.match(web, /confirmRow\.style\.display = needed \? "grid" : "none";/u);
+  assert.match(web, /confirm\.required = needed;/u);
+  assert.match(web, /confirm\.disabled = !needed;/u);
+  assert.match(web, /setRepeat\(!shown\);/u);
+});
+
+test("password mismatch is visible and blocks submission", () => {
+  assert.match(html, /id="confirm-error"[\s\S]*Passwords do not match\./u);
   assert.match(web, /confirm\.setCustomValidity\(matches \? "" : "Passwords do not match\."\)/u);
+  assert.match(web, /confirmError\.style\.display = show \? "block" : "none";/u);
+  assert.match(css, /input\[aria-invalid="true"\]/u);
 });
 
 test("unsafe scores retain actionable guidance", () => {
