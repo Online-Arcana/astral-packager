@@ -34,6 +34,7 @@ The version-2 header is always 103 bytes. The complete header is AES-GCM additio
 | 0 | uncompressed typed protobuf |
 | 1 | Brotli stream defined by RFC 7932 |
 | 2 | raw DEFLATE stream without zlib or gzip framing |
+| 3 | Zstandard frame |
 
 Packaging always includes raw protobuf as a candidate, so compression can never enlarge the payload. The smallest supported lossless candidate is stored.
 
@@ -43,9 +44,10 @@ The Node CLI compares:
 - Brotli quality 11 in text mode
 - raw DEFLATE level 9 with the default strategy
 - raw DEFLATE level 9 with the filtered strategy
+- Zstandard level 22 with the `btultra2` strategy
 - uncompressed protobuf
 
-The browser uses the same selection rule with the lossless Brotli and raw-DEFLATE encoders exposed by its Compression Streams implementation. A runtime that lacks one codec simply excludes that candidate. The codec ID in the header determines the exact unpacking rule.
+The browser uses the same selection rule with the lossless Brotli, raw-DEFLATE and Zstandard encoders exposed by its Compression Streams implementation. A runtime that lacks one codec excludes that candidate. The codec ID in the header determines the exact unpacking rule.
 
 Compression is performed before encryption. AES-GCM ciphertext is intentionally random-looking and must never be passed through another compression stage.
 
