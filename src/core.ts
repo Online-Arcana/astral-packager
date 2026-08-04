@@ -3,7 +3,7 @@
 import { cat, eq, text, utf8, wipe } from "./bytes.ts";
 import { expand, rawCodec, shrink } from "./cmp.ts";
 import { edPub, lockKey, rand, rootFor, signSeed } from "./crypto.ts";
-import { makeHead3, prodIter, readBox, tagSize } from "./fmt.ts";
+import { makeHead4, prodIter, readBox, tagSize } from "./fmt.ts";
 import { Id } from "./id.ts";
 import { canon, parse } from "./json.ts";
 import { sameSigns, signsFor } from "./meta.ts";
@@ -82,11 +82,11 @@ export const packWith = async (source, password, opt = {}) => {
     smallData = small.data;
     mark(opt, 85, small.id === rawCodec ? "Using raw protobuf" : "Compressed payload ready");
     const cipherSize = smallData.byteLength + tagSize;
-    const head = makeHead3(
+    const head = makeHead4(
       iterations,
       salt,
       nonce,
-      pub.text,
+      pub.raw,
       signs,
       cipherSize,
       small.id,
@@ -107,6 +107,7 @@ export const packWith = async (source, password, opt = {}) => {
     return {
       bytes,
       pub: pub.text,
+      pubRaw: pub.raw.slice(),
       signs,
       info: {
         json: json.byteLength,
@@ -123,10 +124,11 @@ export const packWith = async (source, password, opt = {}) => {
 export const pack = (source, password, progress = null) => packWith(source, password, { progress });
 
 export const readPub = (data) => readBox(data).pub;
+export const readPubRaw = (data) => readBox(data).pubRaw.slice();
 
 export const readMeta = (data) => {
   const box = readBox(data);
-  return { ver: box.ver, pub: box.pub, signs: box.signs };
+  return { ver: box.ver, pub: box.pub, pubRaw: box.pubRaw.slice(), signs: box.signs };
 };
 
 export const open = async (data, password) => {
@@ -181,7 +183,7 @@ export const open = async (data, password) => {
     }
 
     const signs = signsFor(value);
-    if (box.ver === 3 && !sameSigns(signs, box.signs)) {
+    if ((box.ver === 3 || box.ver === 4) && !sameSigns(signs, box.signs)) {
       throw new Error("Public signs do not match the encrypted chart");
     }
 
@@ -190,14 +192,21 @@ export const open = async (data, password) => {
     doc = identity.doc;
     seed = await signSeed(root, doc);
     const pub = await edPub(seed);
-    if (!eq(utf8(pub.text), utf8(box.pub))) {
+    if (!eq(pub.raw, box.pubRaw)) {
       throw new Error("Public key does not match the encrypted identity");
     }
 
     const id = new Id(root, doc, box.pub);
     root = undefined;
     doc = undefined;
-    return { json: value, source: clean, pub: box.pub, signs, id };
+    return {
+      json: value,
+      source: clean,
+      pub: box.pub,
+      pubRaw: box.pubRaw.slice(),
+      signs,
+      id,
+    };
   } finally {
     wipeAll(rawKey, packed, raw, sourceBytes, ent, cleanBytes, seed, root, doc);
   }
