@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Encrypt JSON astral profiles into portable identity containers.",
   "type": "module",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22"
   },

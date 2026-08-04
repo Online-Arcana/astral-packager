@@ -65,4 +65,4 @@ Maintained source stays under `src/`. Generated output stays under `dist/`.
 
 ## Licence
 
-MIT © Kitty Crow
+GPL-3.0-only
