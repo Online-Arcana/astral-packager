@@ -34,6 +34,7 @@ p { color: #c9c2d8; line-height: 1.6; }
 .eyebrow { margin: 0; color: #ad8df0; font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
 
 form, section { display: grid; gap: 1rem; }
+.job[hidden], #result[hidden] { display: none; }
 label { display: grid; gap: .45rem; font-weight: 680; }
 
 input, #make, .download {
@@ -98,7 +99,8 @@ input:focus-visible, button:focus-visible, .download:focus-visible {
 #result { padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, .1); }
 code { color: #dccdff; }
 
-.pwd-audit {
+.pwd-audit,
+.job {
   gap: .55rem;
   padding: .85rem;
   border: 1px solid rgba(255, 255, 255, .12);
@@ -106,14 +108,21 @@ code { color: #dccdff; }
   background: rgba(255, 255, 255, .035);
 }
 
-.pwd-head {
+.pwd-head,
+.job-head,
+.job-time {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.pwd-head span { color: #c9c2d8; }
-.pwd-audit meter { width: 100%; height: .8rem; accent-color: #7c6f8f; }
+.pwd-head span,
+.job-head span,
+.job-time { color: #c9c2d8; }
+.pwd-audit meter,
+.job progress { width: 100%; height: .8rem; accent-color: #7c6f8f; }
+.job progress { accent-color: #a98ce7; }
+.job-time { font-size: .9rem; }
 .pwd-audit[data-score="1"] meter { accent-color: #d46a6a; }
 .pwd-audit[data-score="2"] meter { accent-color: #d49a57; }
 .pwd-audit[data-score="3"] meter { accent-color: #86b96a; }
@@ -132,6 +141,6 @@ code { color: #dccdff; }
   .reveal { color: #5f566b; }
   .reveal:hover { background: rgba(44, 28, 72, .08); }
   .field-error { color: #a52f45; }
-  .pwd-audit { background: rgba(44, 28, 72, .035); border-color: rgba(44, 28, 72, .12); }
-  .pwd-head span, .pwd-audit ul { color: #5f566b; }
+  .pwd-audit, .job { background: rgba(44, 28, 72, .035); border-color: rgba(44, 28, 72, .12); }
+  .pwd-head span, .pwd-audit ul, .job-head span, .job-time { color: #5f566b; }
 }

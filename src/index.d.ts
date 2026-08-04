@@ -5,6 +5,11 @@ export interface PackInfo {
   codec: 0 | 1 | 2 | 3;
 }
 
+export interface PackProgress {
+  pct: number;
+  stage: string;
+}
+
 export interface Packed {
   bytes: Uint8Array;
   pub: string;
@@ -38,6 +43,10 @@ export interface Opened {
 export const pwdMin: 10;
 export function auditPwd(password: string): PwdAudit;
 export function pwdOk(password: string): boolean;
-export function pack(source: string, password: string): Promise<Packed>;
+export function pack(
+  source: string,
+  password: string,
+  progress?: (value: PackProgress) => void,
+): Promise<Packed>;
 export function open(data: Uint8Array, password: string): Promise<Opened>;
 export function readPub(data: Uint8Array): string;

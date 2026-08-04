@@ -71,6 +71,18 @@
       </section>
 
       <button id="make" type="submit">Create encrypted container</button>
+
+      <section id="job" class="job" aria-busy="false" hidden>
+        <div class="job-head">
+          <strong id="job-stage" role="status" aria-live="polite">Preparing</strong>
+          <span id="job-pct">0%</span>
+        </div>
+        <progress id="job-bar" max="100" value="0">0%</progress>
+        <div class="job-time">
+          <span id="job-elapsed">Elapsed 0.0s</span>
+          <span id="job-eta">ETA —</span>
+        </div>
+      </section>
     </form>
 
     <p id="status" role="status" aria-live="polite">Ready.</p>

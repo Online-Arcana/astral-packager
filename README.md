@@ -63,7 +63,7 @@ npm run build:site
 npm start
 ```
 
-GitHub Pages deploys automatically after relevant changes reach `main`. The workflow can also be run manually.
+The page reports the current packaging stage and percentage, elapsed time and an ETA calculated from elapsed time and completed percentage. GitHub Pages deploys automatically after relevant changes reach `main`. The workflow can also be run manually.
 
 ## Documentation
 

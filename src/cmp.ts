@@ -26,79 +26,122 @@ const nodeCall = (fn, data, options = null) => new Promise((resolve, reject) => 
   else fn(data, options, done);
 });
 
-const nodeCandidates = async (data) => {
+const nodeCandidates = async (data, step) => {
   const zlib = await import("node:zlib");
   const brBase = {
     [zlib.constants.BROTLI_PARAM_QUALITY]: 11,
     [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.byteLength,
   };
-  const base = await Promise.all([
-    nodeCall(zlib.brotliCompress, data, {
-      params: {
-        ...brBase,
-        [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_GENERIC,
-      },
-    }),
-    nodeCall(zlib.brotliCompress, data, {
-      params: {
-        ...brBase,
-        [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT,
-      },
-    }),
-    nodeCall(zlib.deflateRaw, data, { level: 9, memLevel: 9 }),
-    nodeCall(zlib.deflateRaw, data, {
-      level: 9,
-      memLevel: 9,
-      strategy: zlib.constants.Z_FILTERED,
-    }),
-  ]);
-  const out = [
-    { id: brCodec, data: base[0] },
-    { id: brCodec, data: base[1] },
-    { id: defCodec, data: base[2] },
-    { id: defCodec, data: base[3] },
+  const jobs = [
+    {
+      id: brCodec,
+      name: "Brotli generic",
+      run: () => nodeCall(zlib.brotliCompress, data, {
+        params: {
+          ...brBase,
+          [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_GENERIC,
+        },
+      }),
+    },
+    {
+      id: brCodec,
+      name: "Brotli text",
+      run: () => nodeCall(zlib.brotliCompress, data, {
+        params: {
+          ...brBase,
+          [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT,
+        },
+      }),
+    },
+    {
+      id: defCodec,
+      name: "DEFLATE default",
+      run: () => nodeCall(zlib.deflateRaw, data, { level: 9, memLevel: 9 }),
+    },
+    {
+      id: defCodec,
+      name: "DEFLATE filtered",
+      run: () => nodeCall(zlib.deflateRaw, data, {
+        level: 9,
+        memLevel: 9,
+        strategy: zlib.constants.Z_FILTERED,
+      }),
+    },
   ];
 
   if (typeof zlib.zstdCompress === "function") {
-    const zstd = await nodeCall(zlib.zstdCompress, data, {
-      params: {
-        [zlib.constants.ZSTD_c_compressionLevel]: 22,
-        [zlib.constants.ZSTD_c_strategy]: zlib.constants.ZSTD_btultra2,
-        [zlib.constants.ZSTD_c_checksumFlag]: 0,
-        [zlib.constants.ZSTD_c_contentSizeFlag]: 1,
-      },
+    jobs.push({
+      id: zstdCodec,
+      name: "Zstandard",
+      run: () => nodeCall(zlib.zstdCompress, data, {
+        params: {
+          [zlib.constants.ZSTD_c_compressionLevel]: 22,
+          [zlib.constants.ZSTD_c_strategy]: zlib.constants.ZSTD_btultra2,
+          [zlib.constants.ZSTD_c_checksumFlag]: 0,
+          [zlib.constants.ZSTD_c_contentSizeFlag]: 1,
+        },
+      }),
     });
-    out.push({ id: zstdCodec, data: zstd });
   }
-  return out;
+
+  let done = 0;
+  step?.(done, jobs.length, "");
+  const values = await Promise.all(jobs.map(async (job) => {
+    try {
+      return { id: job.id, data: await job.run() };
+    } catch {
+      return null;
+    } finally {
+      done += 1;
+      step?.(done, jobs.length, job.name);
+    }
+  }));
+  return values.filter(Boolean);
 };
 
-const browserCandidates = async (data) => {
+const browserCandidates = async (data, step) => {
+  const jobs = [
+    [brCodec, "brotli", "Brotli"],
+    [defCodec, "deflate-raw", "DEFLATE"],
+    [zstdCodec, "zstd", "Zstandard"],
+  ];
   const out = [];
-  for (const [id, name] of [
-    [brCodec, "brotli"],
-    [defCodec, "deflate-raw"],
-    [zstdCodec, "zstd"],
-  ]) {
+  let done = 0;
+  step?.(done, jobs.length, "");
+  for (const [id, name, label] of jobs) {
     try {
       out.push({ id, data: await stream(name, data) });
     } catch {
       // Runtime does not expose this lossless codec.
+    } finally {
+      done += 1;
+      step?.(done, jobs.length, label);
     }
   }
   return out;
 };
 
-export const shrink = async (data, force = null) => {
+export const shrink = async (data, force = null, onStep = null) => {
   if (data.byteLength > maxRaw) throw new Error("Payload is too large");
   if (force !== null && ![rawCodec, brCodec, defCodec, zstdCodec].includes(force)) {
     throw new Error("Unsupported compression codec");
   }
-  if (force === rawCodec) return { id: rawCodec, data: data.slice() };
+  if (force === rawCodec) {
+    onStep?.({ done: 1, total: 1, name: "Raw protobuf" });
+    return { id: rawCodec, data: data.slice() };
+  }
 
+  const track = (done, total, name) => {
+    const count = total + 1;
+    onStep?.({
+      done: done + 1,
+      total: count,
+      name: done === 0 ? "Raw protobuf" : name,
+    });
+  };
   const compressed = isNode
-    ? await nodeCandidates(data)
-    : await browserCandidates(data);
+    ? await nodeCandidates(data, track)
+    : await browserCandidates(data, track);
   const all = [{ id: rawCodec, data: data.slice() }, ...compressed];
   const candidates = all.filter((candidate) => force === null || candidate.id === force);
   if (candidates.length === 0) {

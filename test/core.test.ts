@@ -80,6 +80,25 @@ test("pack and open use one deterministic identity", async () => {
   await assert.rejects(() => value.id.sign(utf8("again")), /dropped/u);
 });
 
+test("pack reports monotonic staged progress", async () => {
+  const seen = [];
+  const packed = await packWith(JSON.stringify({
+    bodies: Array.from({ length: 40 }, (_, index) => ({ name: "Mars", index })),
+  }), password, {
+    ...opt,
+    progress: (value) => seen.push(value),
+  });
+  assert.equal(seen[0].pct, 0);
+  assert.equal(seen.at(-1).pct, 100);
+  assert.ok(seen.some((value) => value.stage.startsWith("Testing ")));
+  for (let index = 1; index < seen.length; index += 1) {
+    assert.ok(seen[index].pct >= seen[index - 1].pct);
+  }
+  const value = await open(packed.bytes, password);
+  assert.equal(value.pub, packed.pub);
+  value.id.drop();
+});
+
 test("compression does not participate in identity derivation", async () => {
   const source = JSON.stringify({
     bodies: Array.from({ length: 80 }, (_, index) => ({
