@@ -69,7 +69,8 @@ The page reports packaging percentage, elapsed time and ETA. Fast preparation ac
 
 ## Documentation
 
-- [Container and unpacking rules](docs/format.md)
+- [Clean-room decryption and unpacking](docs/unpack.md)
+- [Container format](docs/format.md)
 - [Cryptography](docs/crypto.md)
 - [Library API](docs/api.md)
 - [GitHub Pages](docs/pages.md)
