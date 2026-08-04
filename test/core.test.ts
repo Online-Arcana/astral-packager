@@ -42,14 +42,27 @@ test("canonical JSON rejects duplicate keys and ignores formatting", () => {
 });
 
 test("typed protobuf preserves every JSON value kind", async () => {
-  const source = JSON.stringify({
-    array: [null, true, false, -12, 1.25, "text", { nested: 9 }],
-    empty: {},
-  });
-  const packed = await packWith(source, password, opt);
-  const value = await open(packed.bytes, password);
-  assert.deepEqual(JSON.parse(value.source), JSON.parse(source));
-  value.id.drop();
+  const sources = [
+    "null",
+    "true",
+    "false",
+    "-12",
+    "1.25",
+    '"text"',
+    "[]",
+    "{}",
+    JSON.stringify({
+      array: [null, true, false, -12, 1.25, "text", { nested: 9 }],
+      empty: {},
+    }),
+  ];
+
+  for (const source of sources) {
+    const packed = await packWith(source, password, opt);
+    const value = await open(packed.bytes, password);
+    assert.deepEqual(JSON.parse(value.source), JSON.parse(source));
+    value.id.drop();
+  }
 });
 
 test("pack and open use one deterministic identity", async () => {
