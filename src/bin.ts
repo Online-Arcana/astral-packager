@@ -8,7 +8,7 @@ import { emitKeypressEvents } from "node:readline";
 import { auditPwd, open, pack, readPub } from "./core.ts";
 
 const help = () => {
-  console.log(`astral-packager 0.3.0
+  console.log(`astral-packager 0.3.1
 
 Usage:
   astral-pack <json-file>
@@ -94,7 +94,7 @@ const codec = ["raw", "Brotli", "DEFLATE", "Zstandard"];
 const run = async () => {
   const args = process.argv.slice(2);
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") return help();
-  if (args[0] === "--version" || args[0] === "-v") return console.log("0.3.0");
+  if (args[0] === "--version" || args[0] === "-v") return console.log("0.3.1");
   const cmd = args[0] === "open" || args[0] === "pub" ? args.shift() : "pack";
   const file = args[0];
   if (!file || args.length !== 1) throw new Error("Exactly one input file is required");
