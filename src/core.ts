@@ -18,6 +18,16 @@ const wipeAll = (...values) => {
   }
 };
 
+const mark = (opt, pct, stage) => {
+  if (typeof opt.progress !== "function") return;
+  const value = Math.max(0, Math.min(100, Math.round(pct)));
+  try {
+    opt.progress({ pct: value, stage });
+  } catch {
+    // Progress observers must not affect cryptographic output.
+  }
+};
+
 const needPwd = (password) => {
   const audit = auditPwd(password);
   if (!audit.ok) throw new Error(audit.warning);
@@ -31,9 +41,12 @@ export { auditPwd, pwdOk };
 
 export const packWith = async (source, password, opt = {}) => {
   needPwd(password);
+  mark(opt, 0, "Preparing");
   const value = parse(source);
+  mark(opt, 4, "JSON parsed");
   const clean = canon(value);
   const json = utf8(clean);
+  mark(opt, 9, "Profile canonicalised");
   const ent = opt.ent ? opt.ent.slice() : rand(32);
   const salt = opt.salt ? opt.salt.slice() : rand(16);
   const nonce = opt.nonce ? opt.nonce.slice() : rand(12);
@@ -46,14 +59,22 @@ export const packWith = async (source, password, opt = {}) => {
   let rawKey;
 
   try {
+    mark(opt, 12, "Generating identity");
     const identity = await rootFor(json, ent);
     root = identity.root;
     doc = identity.doc;
+    mark(opt, 18, "Identity root generated");
     seed = await signSeed(root, doc);
     const pub = await edPub(seed);
+    mark(opt, 26, "Public key generated");
     raw = encodePb2(value, ent);
-    const small = await shrink(raw, opt.codec ?? null);
+    mark(opt, 32, "Protobuf encoded");
+    const small = await shrink(raw, opt.codec ?? null, ({ done, total, name }) => {
+      const pct = 32 + ((done / total) * 40);
+      mark(opt, pct, `Testing ${name}`);
+    });
     smallData = small.data;
+    mark(opt, 74, "Smallest payload selected");
     const cipherSize = smallData.byteLength + tagSize;
     const head = makeHead2(
       iterations,
@@ -64,7 +85,9 @@ export const packWith = async (source, password, opt = {}) => {
       small.id,
       raw.byteLength,
     );
+    mark(opt, 78, "Deriving encryption key");
     rawKey = await lockKey(password, salt, iterations);
+    mark(opt, 91, "Encryption key derived");
     const key = await aes(rawKey, "encrypt");
     const cipher = new Uint8Array(await crypto.subtle.encrypt({
       name: "AES-GCM",
@@ -72,8 +95,11 @@ export const packWith = async (source, password, opt = {}) => {
       additionalData: head,
       tagLength: 128,
     }, key, smallData));
+    mark(opt, 98, "Payload encrypted");
+    const bytes = cat(head, cipher);
+    mark(opt, 100, "Container complete");
     return {
-      bytes: cat(head, cipher),
+      bytes,
       pub: pub.text,
       info: {
         json: json.byteLength,
@@ -87,7 +113,7 @@ export const packWith = async (source, password, opt = {}) => {
   }
 };
 
-export const pack = (source, password) => packWith(source, password);
+export const pack = (source, password, progress = null) => packWith(source, password, { progress });
 
 export const readPub = (data) => readBox(data).pub;
 
