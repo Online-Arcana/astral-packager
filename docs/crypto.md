@@ -17,14 +17,14 @@ public key  = Ed25519(sign seed)
 
 Changing either the semantic JSON document or the private entropy changes every user key. Formatting, object-key order, protobuf encoding and compression do not.
 
-Child keys use labelled HKDF scopes. Consumers can derive independent profile, reading, device or ledger keys without reusing signing material.
+Child keys use labelled HKDF scopes. Consumers can derive independent profile, reading, device or ledger keys without reusing signing material. The exact byte-level derivation is specified in [Decrypting and unpacking](unpack.md).
 
 ## Storage pipeline
 
 ```text
 semantic JSON
   → typed protobuf
-  → smallest supported lossless encoding
+  → balanced lossless compression or raw protobuf
   → password-derived AES-256-GCM encryption
 ```
 
@@ -34,7 +34,7 @@ Version 2 records the codec and uncompressed protobuf length in the authenticate
 
 ## Password lock
 
-The chosen password is normalised with Unicode NFKC and derives a 256-bit unlock key with PBKDF2-HMAC-SHA-256, a random 16-byte salt and 1,200,000 iterations. AES-256-GCM encrypts and authenticates the compressed protobuf payload and binds the complete visible header as additional authenticated data.
+The chosen password is normalised with Unicode NFKC, encoded as UTF-8 and derives a 256-bit unlock key with PBKDF2-HMAC-SHA-256, a random 16-byte salt and the iteration count stored in the header. New files currently use 1,200,000 iterations. AES-256-GCM uses a 12-byte nonce and a 128-bit tag, encrypts the protobuf payload and binds the complete visible header as additional authenticated data.
 
 The password is not part of identity generation. Re-encrypting the same private payload under another password preserves the public identity and all derived keys.
 
