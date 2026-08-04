@@ -57,12 +57,16 @@ const clock = (seconds) => {
 const showTime = () => {
   if (started === 0) return;
   const elapsed = (performance.now() - started) / 1000;
-  const eta = pct > 0 && pct < 100
-    ? elapsed * ((100 - pct) / pct)
-    : pct === 100
-      ? 0
-      : Number.NaN;
   jobElapsed.textContent = `Elapsed ${clock(elapsed)}`;
+  if (pct === 100) {
+    jobEta.textContent = "ETA 0.0s";
+    return;
+  }
+  if (pct <= 1) {
+    jobEta.textContent = "ETA calculating…";
+    return;
+  }
+  const eta = elapsed * ((100 - pct) / pct);
   jobEta.textContent = `ETA ${clock(eta)}`;
 };
 
@@ -95,7 +99,7 @@ const stopJob = (stage, done) => {
   else jobStage.textContent = stage;
   job.setAttribute("aria-busy", "false");
   showTime();
-  jobEta.textContent = done ? "ETA 0.0s" : "ETA —";
+  if (!done) jobEta.textContent = "ETA —";
 };
 
 const setReveal = (toggle, input, shown) => {
@@ -187,11 +191,11 @@ form.addEventListener("submit", async (event) => {
   if (!checkMatch()) return status.textContent = "Passwords do not match.";
   button.disabled = true;
   startJob();
-  showJob(1, "Reading source file");
+  showJob(0, "Reading source file");
   status.textContent = "Packaging locally…";
   try {
     const source = await selected.text();
-    showJob(3, "Source file read");
+    showJob(0, "Source file read");
     const value = await pack(source, password.value, ({ pct: next, stage }) => {
       showJob(next, stage);
     });
