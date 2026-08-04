@@ -1,6 +1,16 @@
 name: Pages
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/pages.yml"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
 
 permissions:
@@ -19,16 +29,29 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run ci
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Install
+        run: npm ci
+
+      - name: Check and build
+        run: npm run ci
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
         with:
           path: dist/site
-      - id: deploy
+
+      - name: Deploy
+        id: deploy
         uses: actions/deploy-pages@v4
