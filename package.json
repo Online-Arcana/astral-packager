@@ -5,7 +5,7 @@
   "type": "module",
   "license": "GPL-3.0-only",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.15.0"
   },
   "bin": {
     "astral-pack": "./dist/bin.js"
