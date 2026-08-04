@@ -83,7 +83,7 @@ test("pack and open use one deterministic identity", async () => {
 test("pack weights progress toward real compression work", async () => {
   const seen = [];
   const packed = await packWith(JSON.stringify({
-    bodies: Array.from({ length: 40 }, (_, index) => ({ name: "Mars", index })),
+    bodies: Array.from({ length: 400 }, (_, index) => ({ name: "Mars", index })),
   }), password, {
     ...opt,
     progress: (value) => seen.push(value),
