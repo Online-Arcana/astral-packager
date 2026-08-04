@@ -1,8 +1,19 @@
 # Library API
 
 ```ts
-import { open, pack, readPub } from "astral-packager";
+import { auditPwd, open, pack, readPub } from "astral-packager";
 ```
+
+## `auditPwd(password)`
+
+Runs the same local password auditor used by the CLI and browser page.
+
+```ts
+const audit = auditPwd(password);
+console.log(audit.score, audit.label, audit.suggestions);
+```
+
+Scores run from `0` to `4`. New containers require `audit.ok === true`, which currently means at least 10 characters and a score of Strong or Excellent.
 
 ## `pack(source, password)`
 
