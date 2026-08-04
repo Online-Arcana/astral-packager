@@ -8,7 +8,7 @@ import { emitKeypressEvents } from "node:readline";
 import { auditPwd, open, pack, readPub } from "./core.ts";
 
 const help = () => {
-  console.log(`astral-packager 0.2.2
+  console.log(`astral-packager 0.3.0
 
 Usage:
   astral-pack <json-file>
@@ -89,10 +89,12 @@ const absent = async (file) => {
   }
 };
 
+const codec = ["raw", "Brotli", "DEFLATE", "Zstandard"];
+
 const run = async () => {
   const args = process.argv.slice(2);
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") return help();
-  if (args[0] === "--version" || args[0] === "-v") return console.log("0.2.2");
+  if (args[0] === "--version" || args[0] === "-v") return console.log("0.3.0");
   const cmd = args[0] === "open" || args[0] === "pub" ? args.shift() : "pack";
   const file = args[0];
   if (!file || args.length !== 1) throw new Error("Exactly one input file is required");
@@ -119,6 +121,7 @@ const run = async () => {
   const value = await pack(source, pwd);
   await writeFile(target, value.bytes, { mode: 0o600 });
   console.log(`Wrote ${target}`);
+  console.log(`Payload: ${value.info.json} B JSON → ${value.info.pb} B protobuf → ${value.info.packed} B ${codec[value.info.codec]}`);
   console.log(`Public key: ${value.pub}`);
 };
 

@@ -1,17 +1,17 @@
 # Astral Packager
 
-Encrypt JSON astral profiles into portable identity containers. The CLI and browser page use the same local cryptographic implementation.
+Turn any strict JSON astral profile into a compact, portable and password-encrypted `.astral` identity container. The CLI and GitHub Pages interface use the same local core.
 
 ## Use
 
-Requires Node.js 22 or later.
+Requires Node.js 22.15 or later.
 
 ```sh
 npm run build
 node dist/bin.js chart.astral.raw
 ```
 
-The CLI requests a password twice without echoing it, shows a 0–4 strength score and writes the output beside the source:
+The CLI asks for the password twice without echoing it and writes beside the source:
 
 ```text
 chart.astral.raw → chart.astral
@@ -19,9 +19,7 @@ chart.json       → chart.astral
 chart.astral     → chart.packed.astral
 ```
 
-New containers require at least 10 characters and a Strong or Excellent score. Long common phrases, dates, sequences, keyboard walks and predictable substitutions are rejected even when they satisfy the length requirement.
-
-Read the public key without decrypting:
+Read the visible public key without decrypting:
 
 ```sh
 node dist/bin.js pub chart.astral
@@ -35,9 +33,28 @@ node dist/bin.js open chart.astral
 
 ## Container
 
-The binary `.astral` container has one readable identity field: the base64url Ed25519 public key. Binary KDF metadata and AES-GCM ciphertext follow it. The ciphertext decrypts to a protobuf payload containing canonical JSON and 256 bits of private identity entropy.
+Version 2 uses this order:
 
-The file plus its password regenerates the user identity and all derived keys. Neither item is useful alone. Passwords never leave the local process or browser.
+```text
+strict JSON
+  → canonical semantic value
+  → typed protobuf
+  → smallest available lossless encoding
+  → AES-256-GCM
+  → readable public-key header + ciphertext
+```
+
+The packager compares uncompressed protobuf, maximum-quality Brotli, maximum raw DEFLATE and maximum-level Zstandard, then stores the smallest result. Browsers use the lossless encoders exposed by their runtime. Compression never participates in identity generation.
+
+Only the base64url Ed25519 public key is a readable identity field. Binary KDF, codec and length metadata are also visible so tools can identify and unpack the format. The complete header is authenticated.
+
+The encrypted typed protobuf contains the full JSON value and 256 bits of private identity entropy. The file plus its password regenerates the signing identity and every labelled child key. Neither item is useful alone.
+
+Version-1 containers remain readable.
+
+## Passwords
+
+New files require at least 10 characters and a Strong or Excellent local score. Common phrases, dates, sequences, keyboard walks and predictable substitutions are rejected even when long. Passwords never leave the local browser or process.
 
 ## Web page
 
@@ -50,7 +67,7 @@ GitHub Pages deploys automatically after relevant changes reach `main`. The work
 
 ## Documentation
 
-- [Container format](docs/format.md)
+- [Container and unpacking rules](docs/format.md)
 - [Cryptography](docs/crypto.md)
 - [Library API](docs/api.md)
 - [GitHub Pages](docs/pages.md)

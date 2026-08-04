@@ -1,11 +1,11 @@
 {
   "name": "astral-packager",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Encrypt JSON astral profiles into portable identity containers.",
   "type": "module",
   "license": "GPL-3.0-only",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.15.0"
   },
   "bin": {
     "astral-pack": "./dist/bin.js"

@@ -2,9 +2,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { utf8 } from "../src/bytes.ts";
+import { cat, utf8 } from "../src/bytes.ts";
 import { packWith, open, readPub } from "../src/core.ts";
-import { clean } from "../src/json.ts";
+import { edPub, lockKey, rootFor, signSeed } from "../src/crypto.ts";
+import { makeHead, tagSize } from "../src/fmt.ts";
+import { clean, parse, canon } from "../src/json.ts";
+import { encodePb } from "../src/pb.ts";
 
 const password = "correct horse battery staple";
 const opt = {
@@ -14,9 +17,52 @@ const opt = {
   nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 48),
 };
 
+const oldPack = async (source) => {
+  const value = parse(source);
+  const json = utf8(canon(value));
+  const { root, doc } = await rootFor(json, opt.ent);
+  const seed = await signSeed(root, doc);
+  const pub = await edPub(seed);
+  const payload = encodePb(json, opt.ent);
+  const head = makeHead(opt.iterations, opt.salt, opt.nonce, pub.text, payload.byteLength + tagSize);
+  const rawKey = await lockKey(password, opt.salt, opt.iterations);
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt"]);
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({
+    name: "AES-GCM",
+    iv: opt.nonce,
+    additionalData: head,
+    tagLength: 128,
+  }, key, payload));
+  return cat(head, cipher);
+};
+
 test("canonical JSON rejects duplicate keys and ignores formatting", () => {
   assert.equal(clean('{"b":2,"a":1}'), '{"a":1,"b":2}');
   assert.throws(() => clean('{"a":1,"a":2}'), /Duplicate JSON key/u);
+});
+
+test("typed protobuf preserves every JSON value kind", async () => {
+  const sources = [
+    "null",
+    "true",
+    "false",
+    "-12",
+    "1.25",
+    '"text"',
+    "[]",
+    "{}",
+    JSON.stringify({
+      array: [null, true, false, -12, 1.25, "text", { nested: 9 }],
+      empty: {},
+    }),
+  ];
+
+  for (const source of sources) {
+    const packed = await packWith(source, password, opt);
+    const value = await open(packed.bytes, password);
+    assert.deepEqual(JSON.parse(value.source), JSON.parse(source));
+    value.id.drop();
+  }
 });
 
 test("pack and open use one deterministic identity", async () => {
@@ -34,6 +80,47 @@ test("pack and open use one deterministic identity", async () => {
   await assert.rejects(() => value.id.sign(utf8("again")), /dropped/u);
 });
 
+test("compression does not participate in identity derivation", async () => {
+  const source = JSON.stringify({
+    bodies: Array.from({ length: 80 }, (_, index) => ({
+      name: "Mars",
+      index,
+      direct: index % 2 === 0,
+    })),
+  });
+  const raw = await packWith(source, password, { ...opt, codec: 0 });
+  const br = await packWith(source, password, {
+    ...opt,
+    codec: 1,
+    nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 80),
+  });
+  const zstd = await packWith(source, password, {
+    ...opt,
+    codec: 3,
+    nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 96),
+  });
+  assert.equal(raw.pub, br.pub);
+  assert.equal(raw.pub, zstd.pub);
+  assert.equal(raw.info.codec, 0);
+  assert.equal(br.info.codec, 1);
+  assert.equal(zstd.info.codec, 3);
+  assert.ok(br.info.packed < br.info.pb);
+  assert.ok(zstd.info.packed < zstd.info.pb);
+  assert.ok(br.bytes.byteLength < raw.bytes.byteLength);
+  assert.ok(zstd.bytes.byteLength < raw.bytes.byteLength);
+  const restored = await open(zstd.bytes, password);
+  assert.equal(restored.pub, raw.pub);
+  restored.id.drop();
+});
+
+test("version 1 containers remain readable", async () => {
+  const bytes = await oldPack('{"old":true,"n":7}');
+  const value = await open(bytes, password);
+  assert.equal(value.source, '{"n":7,"old":true}');
+  assert.equal(readPub(bytes), value.pub);
+  value.id.drop();
+});
+
 test("wrong passwords and altered bytes fail", async () => {
   const packed = await packWith('{"ok":true}', password, opt);
   await assert.rejects(() => open(packed.bytes, "this password is definitely wrong"), /Wrong password or damaged/u);
@@ -41,7 +128,7 @@ test("wrong passwords and altered bytes fail", async () => {
   changed[changed.length - 20] ^= 1;
   await assert.rejects(() => open(changed, password), /Wrong password or damaged/u);
   const head = packed.bytes.slice();
-  head[56] ^= 1;
+  head[60] ^= 1;
   await assert.rejects(() => open(head, password));
 });
 
