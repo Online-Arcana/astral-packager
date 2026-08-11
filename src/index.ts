@@ -9,5 +9,6 @@ export {
   readMeta,
   readPub,
   readPubRaw,
+  readWheel,
 } from "./core.ts";
 export { pwdMin } from "./pwd.ts";

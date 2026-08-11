@@ -34,7 +34,7 @@ node dist/bin.js open chart.astral
 
 ## Container
 
-Version 4 packages in this order:
+Version 5 packages in this order:
 
 ```text
 strict JSON
@@ -45,24 +45,21 @@ strict JSON
   → authenticated public header + ciphertext
 ```
 
-The public header contains the **exact raw 32-byte Ed25519 public key** at fixed offsets `60–91`. It is not stored as 43 text characters, shortened, hashed or transformed. Tools may encode those bytes as canonical unpadded base64url for display, but the container value is the raw 256-bit key.
+The public header contains the **exact raw 32-byte Ed25519 public identity key** at fixed offsets `60–91`. Tools expose its canonical unpadded base64url form through `readMeta().pub` without decrypting the payload.
 
-The key is followed at offset `92` by six readable UTF-8 fields:
+Starting with `ASTRPKG5`, the clear header also contains versioned UTF-8 JSON metadata for the public astrological identity. It retains the six literal signs used by the identicon and adds only the deterministic fields required to reconstruct the natal chart wheel:
 
-```text
-solar_sign=capricorn
-lunar_sign=virgo
-ascending_sign=capricorn
-midheaven_sign=libra
-descending_sign=cancer
-imum_coeli_sign=aries
-```
+- Solar, Lunar, Ascendant, Midheaven, Descendant and Imum Coeli signs
+- calculation fingerprint and selected house system
+- renderable astrological point longitudes, including the four principal angles
+- the selected twelve house cusp/end longitudes and house status
+- rendered aspect ids, endpoints, kinds, classes and characters
 
-The signs are copied from `astral-calculation.system.points` and remain inside the encrypted payload. Generic JSON remains supported and receives blank public sign values. The complete header is AES-GCM authenticated. Opening the file regenerates the raw public key and re-extracts the signs from the encrypted payload, rejecting any mismatch.
+The public block deliberately excludes unrelated chart content such as the subject name, birth record, interpretations, compatibility, dignity and other private payload fields. Generic JSON remains supported and receives blank signs plus `wheel: null`.
 
-The encrypted typed protobuf contains the complete JSON value and 256 bits of private identity entropy. The file plus its password regenerates the signing identity and every labelled child key. Neither item is useful alone.
+The complete header is AES-GCM additional authenticated data. Opening a version 5 file re-extracts the public wheel metadata from the decrypted chart and rejects any mismatch. The complete JSON value and 256 bits of private identity entropy remain inside the compressed encrypted protobuf.
 
-`ASTRPKG1`, `ASTRPKG2` and `ASTRPKG3` remain readable. New files use `ASTRPKG4`.
+`ASTRPKG1` through `ASTRPKG4` remain readable. New files use `ASTRPKG5`.
 
 ## Compression
 

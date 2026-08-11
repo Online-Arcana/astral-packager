@@ -1,12 +1,13 @@
 // @ts-check
 
 import { b64u, get32, text, u32, unb64u, utf8 } from "./bytes.ts";
-import { decodeSigns, emptySigns, encodeSigns } from "./meta.ts";
+import { decodePublicMeta, decodeSigns, emptySigns, encodePublicMeta, encodeSigns } from "./meta.ts";
 
 const magic1 = utf8("ASTRPKG1");
 const magic2 = utf8("ASTRPKG2");
 const magic3 = utf8("ASTRPKG3");
 const magic4 = utf8("ASTRPKG4");
+const magic5 = utf8("ASTRPKG5");
 const fixed1 = 28;
 const fixed2 = 32;
 const codecs = [0, 1, 2, 3];
@@ -17,6 +18,7 @@ export const pubRawSize = 32;
 export const tagSize = 16;
 export const maxCipher = 64 * 1024 * 1024;
 export const maxPayload = 64 * 1024 * 1024;
+export const maxPublicMeta = 64 * 1024;
 export const minIter = 100_000;
 export const maxIter = 10_000_000;
 export const prodIter = 1_200_000;
@@ -164,6 +166,43 @@ export const makeHead4 = (iterations, salt, nonce, pubRaw, signs, cipherSize, co
   return out;
 };
 
+export const makeHead5 = (iterations, salt, nonce, pubRaw, publicMeta, cipherSize, codec, rawSize) => {
+  needCore(iterations, salt, nonce, cipherSize);
+  needPayload(codec, rawSize);
+  if (!(pubRaw instanceof Uint8Array) || pubRaw.byteLength !== pubRawSize) {
+    throw new Error("Invalid raw Ed25519 public key");
+  }
+
+  const extra = encodePublicMeta(publicMeta);
+  if (extra.byteLength < 1 || extra.byteLength > maxPublicMeta) {
+    throw new Error("Public metadata is too large");
+  }
+  const headSize = fixed2 + salt.byteLength + nonce.byteLength + pubRaw.byteLength + extra.byteLength;
+  const out = new Uint8Array(headSize);
+  out.set(magic5, 0);
+  out[8] = 5;
+  out[9] = 0;
+  out[10] = 1;
+  out[11] = 1;
+  out[12] = codec;
+  out[13] = 2;
+  out[14] = 0;
+  out[15] = 0;
+  out.set(u32(iterations), 16);
+  out.set(u32(rawSize), 20);
+  out.set(u32(cipherSize), 24);
+  out.set(u32(headSize), 28);
+  let at = fixed2;
+  out.set(salt, at);
+  at += salt.byteLength;
+  out.set(nonce, at);
+  at += nonce.byteLength;
+  out.set(pubRaw, at);
+  at += pubRaw.byteLength;
+  out.set(extra, at);
+  return out;
+};
+
 const tail = (data, fixed, iterations, saltLen, nonceLen, pubLen, cipherLen, headLen, allowExtra = false) => {
   if (saltLen !== saltSize || nonceLen !== nonceSize || pubLen !== pubTextSize) {
     throw new Error("Invalid astral-pack header");
@@ -229,6 +268,8 @@ const modern = (data, magic, major, withSigns) => {
     payload: data[13],
     rawSize,
     signs: withSigns ? decodeSigns(value.extra) : emptySigns(),
+    wheel: null,
+    publicMeta: null,
     ...value,
   };
 };
@@ -273,6 +314,62 @@ const version4 = (data) => {
     payload: data[13],
     rawSize,
     signs: decodeSigns(extra),
+    wheel: null,
+    publicMeta: null,
+    iterations,
+    salt,
+    nonce,
+    pub: b64u(pubRaw),
+    pubRaw,
+    extra,
+    head: data.slice(0, headLen),
+    cipher: data.slice(headLen),
+  };
+};
+
+const version5 = (data) => {
+  if (!same(data.slice(0, 8), magic5)) return null;
+  if (data.byteLength < fixed2) throw new Error("Truncated astral-pack header");
+  if (data[8] !== 5 || data[9] !== 0) throw new Error("Unsupported astral-pack version");
+  if (data[10] !== 1) throw new Error("Unsupported password KDF");
+  if (data[11] !== 1) throw new Error("Unsupported encryption algorithm");
+  if (!codecs.includes(data[12])) throw new Error("Unsupported compression codec");
+  if (data[13] !== 2) throw new Error("Unsupported encrypted payload format");
+  if (data[14] !== 0 || data[15] !== 0) throw new Error("Unsupported astral-pack flags");
+
+  const iterations = get32(data, 16);
+  const rawSize = get32(data, 20);
+  const cipherLen = get32(data, 24);
+  const headLen = get32(data, 28);
+  const base = fixed2 + saltSize + nonceSize + pubRawSize;
+  if (iterations < minIter || iterations > maxIter || rawSize < 1 || rawSize > maxPayload) {
+    throw new Error("Unsafe astral-pack parameters");
+  }
+  if (cipherLen < tagSize || cipherLen > maxCipher || headLen <= base || headLen > base + maxPublicMeta) {
+    throw new Error("Unsafe astral-pack parameters");
+  }
+  if (data.byteLength !== headLen + cipherLen) {
+    throw new Error("Truncated or extended astral-pack container");
+  }
+
+  let at = fixed2;
+  const salt = data.slice(at, at + saltSize);
+  at += saltSize;
+  const nonce = data.slice(at, at + nonceSize);
+  at += nonceSize;
+  const pubRaw = data.slice(at, at + pubRawSize);
+  at += pubRawSize;
+  const extra = data.slice(at, headLen);
+  const publicMeta = decodePublicMeta(extra);
+
+  return {
+    ver: 5,
+    codec: data[12],
+    payload: data[13],
+    rawSize,
+    signs: publicMeta.signs,
+    wheel: publicMeta.wheel,
+    publicMeta,
     iterations,
     salt,
     nonce,
@@ -298,6 +395,8 @@ export const readBox = (data) => {
       payload: 1,
       rawSize: null,
       signs: emptySigns(),
+      wheel: null,
+      publicMeta: null,
       ...tail(
         data,
         fixed1,
@@ -317,5 +416,7 @@ export const readBox = (data) => {
   if (v3) return v3;
   const v4 = version4(data);
   if (v4) return v4;
+  const v5 = version5(data);
+  if (v5) return v5;
   throw new Error("Not an astral-pack container");
 };

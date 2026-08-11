@@ -15,9 +15,9 @@ sign seed   = HKDF-SHA-256(root, JSON digest, "astral-pack/sign/ed25519/v1")
 public key  = Ed25519(sign seed)
 ```
 
-The Ed25519 public key is exactly 32 bytes / 256 bits. ASTRPKG4 stores those raw bytes directly in the authenticated header. The 43-character unpadded base64url form returned by `readPub()` is only the canonical display encoding of those same bytes.
+The Ed25519 public key is exactly 32 bytes / 256 bits. ASTRPKG4 and ASTRPKG5 store those raw bytes directly in the authenticated header. The 43-character unpadded base64url form returned by `readPub()` is only the canonical display encoding of those same bytes.
 
-Changing the semantic JSON or private entropy changes every user key. Formatting, object-key order, protobuf encoding, compression, public sign copies and public-key display encoding do not.
+Changing the semantic JSON or private entropy changes every user key. Formatting, object-key order, protobuf encoding, compression, public metadata copies and public-key display encoding do not.
 
 Child keys use labelled HKDF scopes so profile, reading, device and ledger keys never reuse signing material. Exact derivations are specified in [Decrypting and unpacking](unpack.md).
 
@@ -25,14 +25,14 @@ Child keys use labelled HKDF scopes so profile, reading, device and ledger keys 
 
 ```text
 semantic JSON
-  → extract public sign copies
+  → extract public identity signs and wheel geometry
   → typed protobuf containing the complete JSON and private entropy
   → balanced lossless compression or raw protobuf
   → password-derived AES-256-GCM encryption
-  → raw public key + signs + ciphertext
+  → raw public key + public identity metadata + ciphertext
 ```
 
-The six signs remain inside the encrypted payload. Version 4 also writes authenticated plaintext copies. After decryption, the reader regenerates the raw key and re-extracts the signs, requiring byte-for-byte and value-for-value matches with the header.
+The source fields remain inside the encrypted payload. ASTRPKG5 also writes authenticated clear copies of the six identity signs and only the deterministic geometry needed to reconstruct the natal wheel. After decryption, the reader regenerates the raw key and re-extracts the complete public metadata, requiring exact canonical agreement with the header.
 
 Compression occurs before encryption and is not an identity input.
 
@@ -40,7 +40,7 @@ Compression occurs before encryption and is not an identity input.
 
 The password is normalised with Unicode NFKC, encoded as UTF-8 and processed with PBKDF2-HMAC-SHA-256, a random 16-byte salt and the iteration count stored in the header. New files use 1,200,000 iterations. The 32-byte result is an AES-256-GCM key.
 
-AES-GCM uses a 12-byte nonce and 128-bit tag. The complete public header—including the raw key and signs—is additional authenticated data.
+AES-GCM uses a 12-byte nonce and 128-bit tag. The complete public header, including the raw key and public identity metadata, is additional authenticated data.
 
 The password is not part of identity generation. Re-encrypting the same private payload under another password preserves the raw public key, signing identity and every child key.
 
@@ -48,18 +48,19 @@ The KDF and cipher are versioned. A later password-KDF version can strengthen gu
 
 ## Public information
 
-An ASTRPKG4 file reveals without a password:
+An ASTRPKG5 file reveals without a password:
 
-- exact raw 32-byte Ed25519 public key;
-- solar sign;
-- lunar sign;
-- ascending sign;
-- Midheaven sign;
-- descending sign;
-- Imum Coeli sign;
+- exact raw 32-byte Ed25519 public identity key;
+- Solar, Lunar, Ascendant, Midheaven, Descendant and Imum Coeli signs;
+- calculation fingerprint and selected house system when an Astrology wheel is present;
+- the astrological point longitudes needed by the wheel, including the principal angles;
+- the selected twelve-house cusp/end geometry and status;
+- aspect ids, endpoints, kinds, classes and characters used by the wheel renderer;
 - algorithm and length metadata needed to parse the container.
 
-It does not reveal the remaining chart, private entropy, signing seed, identity root or child keys.
+It deliberately does not reveal the subject name, birth record, interpretations, compatibility, dignity, unrelated chart fields, private entropy, signing seed, identity root or child keys.
+
+ASTRPKG1 through ASTRPKG4 remain readable with their historical public-header contracts.
 
 ## Password audit
 

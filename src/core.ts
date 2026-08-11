@@ -3,10 +3,10 @@
 import { cat, eq, text, utf8, wipe } from "./bytes.ts";
 import { expand, rawCodec, shrink } from "./cmp.ts";
 import { edPub, lockKey, rand, rootFor, signSeed } from "./crypto.ts";
-import { makeHead4, prodIter, readBox, tagSize } from "./fmt.ts";
+import { makeHead5, prodIter, readBox, tagSize } from "./fmt.ts";
 import { Id } from "./id.ts";
 import { canon, parse } from "./json.ts";
-import { sameSigns, signsFor } from "./meta.ts";
+import { publicMetaFor, samePublicMeta, sameSigns, signsFor } from "./meta.ts";
 import { decodePb } from "./pb.ts";
 import { decodePb2, encodePb2 } from "./pb2.ts";
 import { auditPwd, pwdInput, pwdOk } from "./pwd.ts";
@@ -44,7 +44,8 @@ export const packWith = async (source, password, opt = {}) => {
   needPwd(password);
   mark(opt, 0, "Reading and validating profile");
   const value = parse(source);
-  const signs = signsFor(value);
+  const publicMeta = publicMetaFor(value);
+  const signs = publicMeta.signs;
   mark(opt, 0, "Canonicalising profile");
   const clean = canon(value);
   const json = utf8(clean);
@@ -82,12 +83,12 @@ export const packWith = async (source, password, opt = {}) => {
     smallData = small.data;
     mark(opt, 85, small.id === rawCodec ? "Using raw protobuf" : "Compressed payload ready");
     const cipherSize = smallData.byteLength + tagSize;
-    const head = makeHead4(
+    const head = makeHead5(
       iterations,
       salt,
       nonce,
       pub.raw,
-      signs,
+      publicMeta,
       cipherSize,
       small.id,
       raw.byteLength,
@@ -109,6 +110,7 @@ export const packWith = async (source, password, opt = {}) => {
       pub: pub.text,
       pubRaw: pub.raw.slice(),
       signs,
+      wheel: publicMeta.wheel,
       info: {
         json: json.byteLength,
         pb: raw.byteLength,
@@ -128,8 +130,16 @@ export const readPubRaw = (data) => readBox(data).pubRaw.slice();
 
 export const readMeta = (data) => {
   const box = readBox(data);
-  return { ver: box.ver, pub: box.pub, pubRaw: box.pubRaw.slice(), signs: box.signs };
+  return {
+    ver: box.ver,
+    pub: box.pub,
+    pubRaw: box.pubRaw.slice(),
+    signs: box.signs,
+    wheel: box.wheel,
+  };
 };
+
+export const readWheel = (data) => readBox(data).wheel;
 
 export const open = async (data, password) => {
   needInput(password);
@@ -182,9 +192,13 @@ export const open = async (data, password) => {
       cleanBytes = utf8(clean);
     }
 
-    const signs = signsFor(value);
+    const publicMeta = publicMetaFor(value);
+    const signs = publicMeta.signs;
     if ((box.ver === 3 || box.ver === 4) && !sameSigns(signs, box.signs)) {
       throw new Error("Public signs do not match the encrypted chart");
+    }
+    if (box.ver === 5 && (box.publicMeta === null || !samePublicMeta(publicMeta, box.publicMeta))) {
+      throw new Error("Public wheel metadata does not match the encrypted chart");
     }
 
     const identity = await rootFor(cleanBytes, ent);
@@ -205,6 +219,7 @@ export const open = async (data, password) => {
       pub: box.pub,
       pubRaw: box.pubRaw.slice(),
       signs,
+      wheel: publicMeta.wheel,
       id,
     };
   } finally {
