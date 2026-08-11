@@ -3,9 +3,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cat, get32, text, utf8 } from "../src/bytes.ts";
-import { packWith, open, readMeta, readPub, readPubRaw } from "../src/core.ts";
+import { packWith, open, readMeta, readPub, readPubRaw, readWheel } from "../src/core.ts";
 import { edPub, lockKey, rootFor, signSeed } from "../src/crypto.ts";
-import { makeHead, makeHead2, makeHead3, tagSize } from "../src/fmt.ts";
+import { makeHead, makeHead2, makeHead3, makeHead4, tagSize } from "../src/fmt.ts";
 import { clean, parse, canon } from "../src/json.ts";
 import { encodePb } from "../src/pb.ts";
 import { encodePb2 } from "../src/pb2.ts";
@@ -18,17 +18,79 @@ const opt = {
   nonce: Uint8Array.from({ length: 12 }, (_, i) => i + 48),
 };
 
+const position = (sign, longitudeDegrees) => ({ position: { value: { sign, longitudeDegrees } } });
+
 const chart = {
   "astral-calculation": {
     system: {
       points: {
-        sun: { position: { value: { sign: "capricorn" } } },
-        moon: { position: { value: { sign: "virgo" } } },
-        ascendant: { position: { value: { sign: "capricorn" } } },
-        midheaven: { position: { value: { sign: "libra" } } },
-        descendant: { position: { value: { sign: "cancer" } } },
-        imum_coeli: { position: { value: { sign: "aries" } } },
+        sun: position("capricorn", 281.25),
+        moon: position("virgo", 166.5),
+        ascendant: position("capricorn", 294.125),
+        midheaven: position("libra", 201.75),
+        descendant: position("cancer", 114.125),
+        imum_coeli: position("aries", 21.75),
       },
+    },
+  },
+};
+
+const houses = Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+  const number = index + 1;
+  const cusp = (294.125 + index * 30) % 360;
+  const end = (294.125 + (index + 1) * 30) % 360;
+  return [String(number), {
+    number,
+    cusp: { value: { longitudeDegrees: cusp } },
+    end: { value: { longitudeDegrees: end } },
+  }];
+}));
+
+const wheelChart = {
+  "astral-calculation": {
+    subject: { providedName: "Private fixture name" },
+    birth: { date: "1991-01-15", time: "12:34:00" },
+    settings: { primaryHouseSystem: "placidus" },
+    provenance: { calculationFingerprint: "sha256:public-wheel-fixture" },
+    system: {
+      points: {
+        sun: position("capricorn", 281.25),
+        moon: position("virgo", 166.5),
+        mercury: position("capricorn", 274.0),
+        venus: position("aquarius", 301.0),
+        mars: position("taurus", 42.0),
+        jupiter: position("leo", 131.0),
+        saturn: position("capricorn", 296.0),
+        uranus: position("capricorn", 279.0),
+        neptune: position("capricorn", 284.0),
+        pluto: position("scorpio", 228.0),
+        north_node_true: position("aquarius", 305.0),
+        south_node_true: position("leo", 125.0),
+        north_node_mean: position("aquarius", 306.0),
+        south_node_mean: position("leo", 126.0),
+        ascendant: position("capricorn", 294.125),
+        descendant: position("cancer", 114.125),
+        midheaven: position("libra", 201.75),
+        imum_coeli: position("aries", 21.75),
+        vertex: position("leo", 140.0),
+        antivertex: position("aquarius", 320.0),
+        east_point: position("capricorn", 290.0),
+        part_of_fortune: position("gemini", 75.0),
+        part_of_spirit: position("scorpio", 220.0),
+        lilith_mean: position("sagittarius", 255.0),
+        lilith_true: position("sagittarius", 258.0),
+      },
+      houses: {
+        placidus: {
+          status: "calculated",
+          houses,
+        },
+      },
+      aspects: [
+        { id: "sun-trine-mars", a: "sun", b: "mars", kind: "trine", class: "major", character: "flowing" },
+        { id: "moon-square-jupiter", a: "moon", b: "jupiter", kind: "square", class: "major", character: "challenging" },
+        { id: "sun-conjunction-uranus", a: "sun", b: "uranus", kind: "conjunction", class: "major", character: "contextual" },
+      ],
     },
   },
 };
@@ -101,6 +163,22 @@ const oldPack3 = async (source) => {
   return encrypt(head, payload);
 };
 
+const oldPack4 = async (source) => {
+  const { value, pub } = await identity(source);
+  const payload = encodePb2(value, opt.ent);
+  const head = makeHead4(
+    opt.iterations,
+    opt.salt,
+    opt.nonce,
+    pub.raw,
+    expectedSigns,
+    payload.byteLength + tagSize,
+    0,
+    payload.byteLength,
+  );
+  return encrypt(head, payload);
+};
+
 test("canonical JSON rejects duplicate keys and ignores formatting", () => {
   assert.equal(clean('{"b":2,"a":1}'), '{"a":1,"b":2}');
   assert.throws(() => clean('{"a":1,"a":2}'), /Duplicate JSON key/u);
@@ -130,29 +208,24 @@ test("typed protobuf preserves every JSON value kind", async () => {
   }
 });
 
-test("version 4 stores the exact raw public key and public signs", async () => {
+test("version 5 stores the exact raw public key and public signs", async () => {
   const packed = await packWith(JSON.stringify(chart), password, opt);
-  assert.equal(text(packed.bytes.slice(0, 8)), "ASTRPKG4");
+  assert.equal(text(packed.bytes.slice(0, 8)), "ASTRPKG5");
   const meta = readMeta(packed.bytes);
-  assert.equal(meta.ver, 4);
+  assert.equal(meta.ver, 5);
   assert.equal(meta.pub, packed.pub);
   assert.deepEqual(meta.pubRaw, packed.pubRaw);
   assert.deepEqual(readPubRaw(packed.bytes), packed.pubRaw);
   assert.deepEqual(packed.bytes.slice(60, 92), packed.pubRaw);
   assert.deepEqual(meta.signs, expectedSigns);
   assert.deepEqual(packed.signs, expectedSigns);
+  assert.equal(meta.wheel, null);
 
   const headSize = get32(packed.bytes, 28);
-  assert.equal(text(packed.bytes.slice(92, headSize)), [
-    "",
-    "solar_sign=capricorn",
-    "lunar_sign=virgo",
-    "ascending_sign=capricorn",
-    "midheaven_sign=libra",
-    "descending_sign=cancer",
-    "imum_coeli_sign=aries",
-    "",
-  ].join("\n"));
+  const publicBlock = JSON.parse(text(packed.bytes.slice(92, headSize)));
+  assert.equal(publicBlock.schema, "astral-public-meta/1.0.0");
+  assert.deepEqual(publicBlock.signs, expectedSigns);
+  assert.equal(publicBlock.wheel, null);
 
   const value = await open(packed.bytes, password);
   assert.deepEqual(value.pubRaw, packed.pubRaw);
@@ -162,7 +235,45 @@ test("version 4 stores the exact raw public key and public signs", async () => {
   value.id.drop();
 });
 
-test("generic JSON keeps blank public sign fields", async () => {
+test("version 5 exposes exactly the metadata needed to reconstruct the natal wheel", async () => {
+  const packed = await packWith(JSON.stringify(wheelChart), password, opt);
+  const meta = readMeta(packed.bytes);
+  const wheel = readWheel(packed.bytes);
+  assert.equal(meta.ver, 5);
+  assert.deepEqual(wheel, meta.wheel);
+  assert.ok(wheel);
+  assert.equal(wheel.schema, "astral-public-wheel/1.0.0");
+  assert.equal(wheel.calculationFingerprint, "sha256:public-wheel-fixture");
+  assert.equal(wheel.primaryHouseSystem, "placidus");
+  assert.equal(wheel.points.sun, 281.25);
+  assert.equal(wheel.points.moon, 166.5);
+  assert.equal(wheel.points.ascendant, 294.125);
+  assert.equal(wheel.points.midheaven, 201.75);
+  assert.equal(wheel.points.descendant, 114.125);
+  assert.equal(wheel.points.imum_coeli, 21.75);
+  assert.equal(wheel.houses.status, "calculated");
+  assert.equal(wheel.houses.houses["1"].cuspLongitudeDegrees, 294.125);
+  assert.equal(wheel.houses.houses["12"].endLongitudeDegrees, 294.125);
+  assert.deepEqual(wheel.aspects[0], {
+    id: "sun-trine-mars",
+    a: "sun",
+    b: "mars",
+    kind: "trine",
+    class: "major",
+    character: "flowing",
+  });
+
+  const headSize = get32(packed.bytes, 28);
+  const publicText = text(packed.bytes.slice(92, headSize));
+  assert.match(publicText, /astral-public-wheel\/1\.0\.0/u);
+  assert.doesNotMatch(publicText, /Private fixture name|1991-01-15|12:34:00/u);
+
+  const opened = await open(packed.bytes, password);
+  assert.deepEqual(opened.wheel, wheel);
+  opened.id.drop();
+});
+
+test("generic JSON keeps blank public sign fields and no public wheel", async () => {
   const packed = await packWith('{"generic":true}', password, opt);
   assert.deepEqual(readMeta(packed.bytes).signs, {
     solar: "",
@@ -172,8 +283,10 @@ test("generic JSON keeps blank public sign fields", async () => {
     descending: "",
     imumCoeli: "",
   });
+  assert.equal(readMeta(packed.bytes).wheel, null);
   const value = await open(packed.bytes, password);
   assert.deepEqual(value.signs, readMeta(packed.bytes).signs);
+  assert.equal(value.wheel, null);
   value.id.drop();
 });
 
@@ -252,12 +365,13 @@ test("compression does not participate in identity derivation", async () => {
   restored.id.drop();
 });
 
-test("version 1, version 2 and version 3 containers remain readable", async () => {
+test("version 1 through version 4 containers remain readable", async () => {
   const v1 = await oldPack('{"old":true,"n":7}');
   const value1 = await open(v1, password);
   assert.equal(value1.source, '{"n":7,"old":true}');
   assert.equal(readPub(v1), value1.pub);
   assert.equal(readMeta(v1).ver, 1);
+  assert.equal(readMeta(v1).wheel, null);
   value1.id.drop();
 
   const v2 = await oldPack2(JSON.stringify(chart));
@@ -271,6 +385,7 @@ test("version 1, version 2 and version 3 containers remain readable", async () =
     descending: "",
     imumCoeli: "",
   });
+  assert.equal(readMeta(v2).wheel, null);
   assert.deepEqual(value2.signs, expectedSigns);
   value2.id.drop();
 
@@ -278,12 +393,21 @@ test("version 1, version 2 and version 3 containers remain readable", async () =
   const value3 = await open(v3, password);
   assert.equal(readMeta(v3).ver, 3);
   assert.deepEqual(readMeta(v3).signs, expectedSigns);
+  assert.equal(readMeta(v3).wheel, null);
   assert.deepEqual(value3.signs, expectedSigns);
   value3.id.drop();
+
+  const v4 = await oldPack4(JSON.stringify(chart));
+  const value4 = await open(v4, password);
+  assert.equal(readMeta(v4).ver, 4);
+  assert.deepEqual(readMeta(v4).signs, expectedSigns);
+  assert.equal(readMeta(v4).wheel, null);
+  assert.deepEqual(value4.signs, expectedSigns);
+  value4.id.drop();
 });
 
 test("wrong passwords and altered bytes fail", async () => {
-  const packed = await packWith(JSON.stringify(chart), password, opt);
+  const packed = await packWith(JSON.stringify(wheelChart), password, opt);
   await assert.rejects(() => open(packed.bytes, "this password is definitely wrong"), /Wrong password or damaged/u);
   const changed = packed.bytes.slice();
   changed[changed.length - 20] ^= 1;
@@ -291,9 +415,9 @@ test("wrong passwords and altered bytes fail", async () => {
   const head = packed.bytes.slice();
   head[60] ^= 1;
   await assert.rejects(() => open(head, password));
-  const signs = packed.bytes.slice();
-  signs[100] ^= 1;
-  await assert.rejects(() => open(signs, password));
+  const metadata = packed.bytes.slice();
+  metadata[100] ^= 1;
+  await assert.rejects(() => open(metadata, password));
 });
 
 test("fresh entropy creates a different public identity", async () => {
