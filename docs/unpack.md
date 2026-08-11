@@ -14,19 +14,20 @@ This is the clean-room contract for reading Astral Packager containers without i
 
 Read the first eight bytes as ASCII:
 
-- `ASTRPKG4`: current raw-key format.
+- `ASTRPKG5`: current raw-key format with public wheel metadata.
+- `ASTRPKG4`: legacy raw-key format with six public signs.
 - `ASTRPKG3`: legacy text-key format with public signs.
 - `ASTRPKG2`: legacy text-key format without public signs.
 - `ASTRPKG1`: legacy canonical-JSON protobuf.
 
 Anything else is invalid.
 
-## ASTRPKG4 public header
+## ASTRPKG5 public header
 
 | Offset | Size | Meaning |
 |---:|---:|---|
-| 0 | 8 | ASCII `ASTRPKG4` |
-| 8 | 1 | major version, must be `4` |
+| 0 | 8 | ASCII `ASTRPKG5` |
+| 8 | 1 | major version, must be `5` |
 | 9 | 1 | minor version, must be `0` |
 | 10 | 1 | KDF, must be `1` |
 | 11 | 1 | cipher, must be `1` |
@@ -40,32 +41,65 @@ Anything else is invalid.
 | 28 | 4 | complete header length |
 | 32 | 16 | PBKDF2 salt |
 | 48 | 12 | AES-GCM nonce |
-| 60 | 32 | exact raw Ed25519 public key |
-| 92 | variable | UTF-8 public sign block |
+| 60 | 32 | exact raw Ed25519 public identity key |
+| 92 | variable | canonical UTF-8 public metadata JSON |
 
-The header length must be between 92 and 348 bytes inclusive. The ciphertext begins at the recorded header length. The file length must equal `header length + ciphertext length`.
+The ciphertext begins at the recorded header length. The file length must equal `header length + ciphertext length`.
 
-Copy offsets `60–91` unchanged as the public key. Do not hash, decode, normalise or reinterpret those bytes. To display the key, encode the 32 bytes as canonical unpadded base64url; this yields 43 characters.
+Copy offsets `60–91` unchanged as the public identity key. Do not hash, decode, normalise or reinterpret those bytes. To display the key, encode the 32 bytes as canonical unpadded base64url; this yields 43 characters.
 
-The sign block begins with a newline and contains exactly six labelled lines plus the final newline:
+The public block begins at byte 92 and ends immediately before the ciphertext. It is one canonical JSON object with schema `astral-public-meta/1.0.0`:
 
-```text
-
-solar_sign=<value>
-lunar_sign=<value>
-ascending_sign=<value>
-midheaven_sign=<value>
-descending_sign=<value>
-imum_coeli_sign=<value>
+```json
+{
+  "schema": "astral-public-meta/1.0.0",
+  "signs": {
+    "solar": "capricorn",
+    "lunar": "virgo",
+    "ascending": "capricorn",
+    "midheaven": "libra",
+    "descending": "cancer",
+    "imumCoeli": "aries"
+  },
+  "wheel": {
+    "schema": "astral-public-wheel/1.0.0",
+    "calculationFingerprint": "sha256:...",
+    "primaryHouseSystem": "placidus",
+    "points": {},
+    "houses": {
+      "status": "calculated",
+      "houses": {}
+    },
+    "aspects": []
+  }
+}
 ```
 
-Each value is blank or one lowercase zodiac name:
+`wheel` may be `null` for generic JSON.
+
+The six sign values are blank or one lowercase zodiac name. For Astrology files they are copied from:
 
 ```text
-aries taurus gemini cancer leo virgo libra scorpio sagittarius capricorn aquarius pisces
+astral-calculation.system.points.sun.position.value.sign
+astral-calculation.system.points.moon.position.value.sign
+astral-calculation.system.points.ascendant.position.value.sign
+astral-calculation.system.points.midheaven.position.value.sign
+astral-calculation.system.points.descendant.position.value.sign
+astral-calculation.system.points.imum_coeli.position.value.sign
 ```
 
-A public-only consumer may read the raw key and signs without a password. They become authenticated only after successful AES-GCM decryption because the complete header is additional authenticated data.
+A non-null wheel contains only the deterministic information required by the shared natal-wheel renderer:
+
+- calculation fingerprint;
+- selected house system;
+- the recognised astrological point longitudes, each `number` in `[0,360)` or `null`;
+- all twelve selected-house entries with number, cusp longitude and end longitude;
+- selected house status;
+- aspect id, endpoint A, endpoint B, kind, class and character.
+
+A public-only consumer may read the key, signs and wheel geometry without a password, decompression or protobuf decoding. The metadata becomes cryptographically authenticated only after successful AES-GCM verification because the complete header is additional authenticated data.
+
+The public metadata block is limited to 64 KiB.
 
 ## Password key
 
@@ -80,7 +114,7 @@ Accept iteration counts from `100000` through `10000000`. Current writers use `1
 
 ## AES-GCM
 
-For ASTRPKG4:
+For ASTRPKG5:
 
 - key: the 32-byte PBKDF2 output;
 - nonce: bytes `48–59`;
@@ -102,7 +136,7 @@ The result must exactly match the uncompressed length at offset 20.
 
 ## Typed protobuf
 
-ASTRPKG2–4 use this standard protobuf wire schema:
+ASTRPKG2–5 use this standard protobuf wire schema:
 
 ```proto
 message Pack {
@@ -142,22 +176,17 @@ Validation rules:
 - strings and keys are valid UTF-8 without unpaired surrogates;
 - unknown fields may be skipped, but known singular fields may not repeat.
 
-The root is the complete semantic JSON value. Public sign fields remain present inside it.
+The root is the complete semantic JSON value. Fields copied into the public identity header remain present in the encrypted payload.
 
-## Public sign verification
+## Public metadata verification
 
-Read these paths from the recovered value:
+After decrypting and reconstructing the semantic value, re-extract the complete `astral-public-meta/1.0.0` object using the same rules as the writer. Canonically serialise it and compare it exactly with the public block from byte 92.
 
-```text
-astral-calculation.system.points.sun.position.value.sign
-astral-calculation.system.points.moon.position.value.sign
-astral-calculation.system.points.ascendant.position.value.sign
-astral-calculation.system.points.midheaven.position.value.sign
-astral-calculation.system.points.descendant.position.value.sign
-astral-calculation.system.points.imum_coeli.position.value.sign
-```
+For the six signs, missing/null source paths become blank and a present value must be a valid zodiac string.
 
-Map them in order to the six public labels. A missing or null path becomes blank. A present value must be a valid zodiac string. Compare all six values exactly with the header and reject any mismatch.
+For a non-null wheel, require the recognised point set, selected twelve-house geometry, status and aspect fields to match exactly. Reject any mismatch.
+
+This cross-check prevents the readable wheel identity from diverging from the encrypted chart.
 
 ## Canonical JSON
 
@@ -200,7 +229,7 @@ info = UTF8("astral-pack/sign/ed25519/v1")
 L    = 32
 ```
 
-Generate the raw 32-byte Ed25519 public key and compare it byte-for-byte with header offsets `60–91`. This is the authoritative comparison for ASTRPKG4.
+Generate the raw 32-byte Ed25519 public key and compare it byte-for-byte with header offsets `60–91`.
 
 For PKCS#8 seed import, prepend this 16-byte prefix to the signing seed:
 
@@ -222,6 +251,14 @@ L    = 32
 
 ## Legacy formats
 
+### ASTRPKG4
+
+- exact raw 32-byte public key at offsets `60–91`;
+- old six-line sign block begins at offset `92`;
+- header length is at most 348 bytes;
+- after decryption, re-extract and compare all six signs;
+- typed protobuf and compression rules match ASTRPKG5.
+
 ### ASTRPKG3
 
 - raw public-key equivalent is stored as 43 canonical unpadded base64url characters at offsets `60–102`;
@@ -233,7 +270,7 @@ L    = 32
 - fixed 103-byte header;
 - same 43-character text key at offsets `60–102`;
 - no public sign block;
-- typed protobuf and compression rules match ASTRPKG4.
+- typed protobuf and compression rules match ASTRPKG5.
 
 ### ASTRPKG1
 
@@ -275,13 +312,13 @@ Reject the complete file on any failure involving:
 
 - magic, versions, algorithms or flags;
 - lengths or safety bounds;
-- public sign syntax;
+- public metadata syntax or schema;
 - password authentication;
 - decompression or output length;
 - protobuf structure;
 - semantic/canonical JSON;
-- sign cross-check;
+- public metadata cross-check;
 - entropy length;
 - raw public-key comparison.
 
-Return no partial chart or derived secret after failure. Clear password-derived, decrypted, entropy, root and signing-seed buffers where the runtime permits.
+Return no partial decrypted chart or derived secret after failure. Clear password-derived, decrypted, entropy, root and signing-seed buffers where the runtime permits.
