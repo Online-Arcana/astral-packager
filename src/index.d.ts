@@ -17,6 +17,7 @@ export type PublicPointId =
 
 export type PublicHouseSystem = "placidus" | "whole_sign" | "equal" | "porphyry";
 export type PublicHouseStatus = "calculated" | "fallback" | "unavailable";
+export type PublicHouseNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export type PublicAspectKind =
   | "conjunction" | "opposition" | "trine" | "square" | "sextile"
   | "quincunx" | "semisextile" | "semisquare" | "sesquiquadrate"
@@ -25,7 +26,7 @@ export type PublicAspectClass = "major" | "minor";
 export type PublicAspectCharacter = "flowing" | "challenging" | "contextual" | "adjusting" | "creative";
 
 export interface PublicHouse {
-  number: number;
+  number: PublicHouseNumber;
   cuspLongitudeDegrees: number | null;
   endLongitudeDegrees: number | null;
 }
